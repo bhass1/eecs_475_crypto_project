@@ -1,3 +1,11 @@
+//EECS 475 Intro Crypto University of Michigan
+// Bill Hass, Nick Gaunt, 
+// Myles Pollie, Robert Minnema
+//
+// Performs AES 256-bit CBC encryption on a file in 4096B chunks to produce
+// a ciphertext file. Then it performs AES 256-bit CBC decryption on the 
+// ciphertext file to produce a decyrpted text file.
+//
 #include <string.h>
 #include <stdio.h>
 #include <iostream>
@@ -25,42 +33,45 @@ void printBytes(unsigned char* buf, int len){
  */
 void en_de_crypt(int should_encrypt, FILE *ifp, FILE *ofp, unsigned char *ckey, unsigned char *ivec) {
 
-    const unsigned BUFSIZE=4096;
-    unsigned char *read_buf = (unsigned char*) malloc(BUFSIZE);
-    unsigned char *cipher_buf;
-    unsigned blocksize;
-    int out_len;
-    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+  //Arbitrary BUFSIZE for chunking the target file.
+  const unsigned BUFSIZE=4096;
+  unsigned char *read_buf = (unsigned char*) malloc(BUFSIZE);
+  unsigned char *cipher_buf;
+  unsigned blocksize;
+  int out_len;
 
-    EVP_CipherInit(ctx, EVP_aes_256_cbc(), ckey, ivec, should_encrypt);
-    blocksize = EVP_CIPHER_CTX_block_size(ctx);
-    cipher_buf = (unsigned char *) malloc(BUFSIZE + blocksize);
+  //Get a new cipher envelope context
+  EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
 
-    while (1) {
+  //Initialize the cipher envelope as 256-bit CBC with ckey, iv, enc/dec mode
+  EVP_CipherInit(ctx, EVP_aes_256_cbc(), ckey, ivec, should_encrypt);
+  blocksize = EVP_CIPHER_CTX_block_size(ctx);
+  cipher_buf = (unsigned char *) malloc(BUFSIZE + blocksize);
 
-        // Read in data in blocks until EOF. Update the ciphering with each read.
-
-        int numRead = fread(read_buf, sizeof(unsigned char), BUFSIZE, ifp);
-        EVP_CipherUpdate(ctx, cipher_buf, &out_len, read_buf, numRead);
-        fwrite(cipher_buf, sizeof(unsigned char), out_len, ofp);
-        printBytes(cipher_buf, out_len);
-        if (numRead < BUFSIZE) { // EOF
-            break;
-        }
-    }
-
-    // Now cipher the final block and write it out.
-
-    EVP_CipherFinal(ctx, cipher_buf, &out_len);
+  while (1) {
+    //Read in data in BUFSIZE chunk
+    int numRead = fread(read_buf, sizeof(unsigned char), BUFSIZE, ifp);
+    //Update cipher (Uses CBC mode EVP API)
+    EVP_CipherUpdate(ctx, cipher_buf, &out_len, read_buf, numRead);
+    //Write cipher buffer to file and print to console
     fwrite(cipher_buf, sizeof(unsigned char), out_len, ofp);
     printBytes(cipher_buf, out_len);
-    std::cout << std::endl;
+    if (numRead < BUFSIZE) { // EOF
+      break;
+    }
+  }
 
-    // Free memory
+  // Now cipher the final block and write it out.
+  EVP_CipherFinal(ctx, cipher_buf, &out_len);
+  fwrite(cipher_buf, sizeof(unsigned char), out_len, ofp);
+  printBytes(cipher_buf, out_len);
+  std::cout << std::endl;
 
-    free(cipher_buf);
-    free(read_buf);
-    EVP_CIPHER_CTX_free(ctx);
+  // Free memory
+
+  free(cipher_buf);
+  free(read_buf);
+  EVP_CIPHER_CTX_free(ctx);
 }
 
 int main(int argc, char *argv[])
@@ -84,7 +95,7 @@ int main(int argc, char *argv[])
   //Decrypt file now
 
   fIN = fopen("ciphertext.txt", "rb"); //File to be read; cipher text
-  fOUT = fopen("decrypted.txt", "wb"); //File to be written; cipher text
+  fOUT = fopen("decrypted.txt", "wb"); //File to be written; plain text
 
   std::cout << "Decrypting contents of ciphertext.txt:" << std::endl;	
   en_de_crypt(FALSE, fIN, fOUT, ckey, ivec);

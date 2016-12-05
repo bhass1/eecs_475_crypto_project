@@ -1,0 +1,4 @@
+*.swp
+test
+ciphertext.txt
+decrypted.txt

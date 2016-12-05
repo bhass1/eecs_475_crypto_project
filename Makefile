@@ -1,7 +1,7 @@
 CC = g++
 CFLAGS = -std=c++11 -g
-SRC = src/*.cpp
-LIBS = -lssl -lcrypto -ldl
+SRC = lib/libcrypto.a src/*.cpp
+LIBS = -I../openssl/include -Llib -lcrypto -ldl -lpthread
 TARGET = test
 
 all:

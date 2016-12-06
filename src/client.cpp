@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include <iostream>
+#include <string>
 #include <stdlib.h>
 #include <unistd.h>
 #include <errno.h>
@@ -10,9 +12,13 @@
 
 #include <arpa/inet.h>
 
+#define DEBUG 0
+
 #define PORT "3490" // the port client will be connecting to 
 
-#define MAXDATASIZE 100 // max number of bytes we can get at once 
+#define MAXDATASIZE 1024 // max number of bytes we can get at once 
+
+int packetize(std::string type, std::string enc_dec, int len, unsigned char* data);
 
 // get sockaddr, IPv4 or IPv6:
 void *get_in_addr(struct sockaddr *sa)
@@ -71,6 +77,11 @@ int main(int argc, char *argv[])
             s, sizeof s);
     printf("client: connecting to %s\n", s);
 
+    packetize("CBC", "ENC", 5, (unsigned char*)"12345");
+    packetize("CNT", "DEC", 8, (unsigned char*)"12345678");
+    packetize("ETT", "ENC", 1, (unsigned char*)"1");
+    packetize("EAT", "DEC", 5, (unsigned char*)"12345");
+
     freeaddrinfo(servinfo); // all done with this structure
 
     if ((numbytes = recv(sockfd, buf, MAXDATASIZE-1, 0)) == -1) {
@@ -85,4 +96,18 @@ int main(int argc, char *argv[])
     close(sockfd);
 
     return 0;
+}
+
+
+//Takes string type, enc_dec, integer length and data bytes to construct
+//a client packet to send to the server socket
+int packetize(std::string type, std::string enc_dec, int len, unsigned char* data){
+	unsigned char buff[1024];
+	memset(buff, '\0', sizeof(unsigned char)*1024);
+	std::string length = std::to_string(len);
+	std::string msg = type + " " + enc_dec + " " + length + " ";
+	memcpy(buff, msg.c_str(), msg.length());
+	memcpy(buff+msg.length(), data, len);
+	DEBUG && std::cout << "Here's the final buffer: " << buff << std::endl;
+	return 1;
 }

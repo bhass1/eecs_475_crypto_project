@@ -18,7 +18,7 @@
 
 #define MAXDATASIZE 1024 // max number of bytes we can get at once 
 
-int packetize(std::string type, std::string enc_dec, int len, unsigned char* data);
+int packetize(unsigned char*, std::string, std::string, int, unsigned char*);
 
 // get sockaddr, IPv4 or IPv6:
 void *get_in_addr(struct sockaddr *sa)
@@ -77,10 +77,15 @@ int main(int argc, char *argv[])
             s, sizeof s);
     printf("client: connecting to %s\n", s);
 
-    packetize("CBC", "ENC", 5, (unsigned char*)"12345");
-    packetize("CNT", "DEC", 8, (unsigned char*)"12345678");
-    packetize("ETT", "ENC", 1, (unsigned char*)"1");
-    packetize("EAT", "DEC", 5, (unsigned char*)"12345");
+    unsigned char out_buf[1024];
+    int out_len = packetize(out_buf, "CBC", "ENC", 5, (unsigned char*)"12345");
+    send(sockfd, out_buf, out_len, 0);
+    packetize(out_buf, "CNT", "DEC", 8, (unsigned char*)"12345678");
+    send(sockfd, out_buf, out_len, 0);
+    packetize(out_buf, "ETT", "ENC", 1, (unsigned char*)"1");
+    send(sockfd, out_buf, out_len, 0);
+    packetize(out_buf, "EAT", "DEC", 5, (unsigned char*)"12345");
+    send(sockfd, out_buf, out_len, 0);
 
     freeaddrinfo(servinfo); // all done with this structure
 
@@ -90,9 +95,7 @@ int main(int argc, char *argv[])
     }
 
     buf[numbytes] = '\0';
-
     printf("client: received '%s'\n",buf);
-
     close(sockfd);
 
     return 0;
@@ -101,13 +104,12 @@ int main(int argc, char *argv[])
 
 //Takes string type, enc_dec, integer length and data bytes to construct
 //a client packet to send to the server socket
-int packetize(std::string type, std::string enc_dec, int len, unsigned char* data){
-	unsigned char buff[1024];
-	memset(buff, '\0', sizeof(unsigned char)*1024);
+int packetize(unsigned char* out_buf, std::string type, std::string enc_dec, int len, unsigned char* data){
+	memset(out_buf, '\0', sizeof(unsigned char)*1024);
 	std::string length = std::to_string(len);
 	std::string msg = type + " " + enc_dec + " " + length + " ";
-	memcpy(buff, msg.c_str(), msg.length());
-	memcpy(buff+msg.length(), data, len);
-	DEBUG && std::cout << "Here's the final buffer: " << buff << std::endl;
-	return 1;
+	memcpy(out_buf, msg.c_str(), msg.length());
+	memcpy(out_buf+msg.length(), data, len);
+	DEBUG && std::cout << "Here's the final buffer: " << out_buf << std::endl;
+	return 1024;
 }

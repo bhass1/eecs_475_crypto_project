@@ -23,6 +23,8 @@
 
 #define BACKLOG 10     // how many pending connections queue will hold
 
+int handle_new_connection(int);
+
 void sigchld_handler(int s)
 {
     // waitpid() might overwrite errno, so we save and restore it:
@@ -124,8 +126,7 @@ int main(void)
 
         if (!fork()) { // this is the child process
             close(sockfd); // child doesn't need the listener
-            if (send(new_fd, "Hello, world!", 13, 0) == -1)
-                perror("send");
+	    handle_new_connection(new_fd);
             close(new_fd);
             exit(0);
         }
@@ -133,4 +134,27 @@ int main(void)
     }
 
     return 0;
+}
+
+int handle_new_connection(int sock){
+	int data_size = 1024;
+	int header_size = 13; //4+4+5 : "CBC ENC 1024 "
+	int buffer_size = data_size + header_size + 1; //+1 for null byte
+	int numbytes = 0;
+	unsigned char buf[buffer_size];
+	while(true){
+    	if ((numbytes = recv(sock, buf, buffer_size-1, 0)) == -1) {
+        	perror("recv");
+		return 0;
+    	}
+    	buf[numbytes] = '\0';
+    	printf("server: received '%s'\n", (unsigned char*)buf);
+	}
+
+
+	if (send(sock, "Hello, world!", 13, 0) == -1){ 
+		perror("send");
+		return 0;
+	}
+	return 1;
 }

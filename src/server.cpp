@@ -18,12 +18,16 @@
 #include <arpa/inet.h>
 #include <sys/wait.h>
 #include <signal.h>
+#include <iostream>
+#include <sstream>
+#include <string>
 
 #define PORT "3490"  // the port users will be connecting to
 
 #define BACKLOG 10     // how many pending connections queue will hold
 
 int handle_new_connection(int);
+int handle_msg(unsigned char* );
 
 void sigchld_handler(int s)
 {
@@ -143,12 +147,15 @@ int handle_new_connection(int sock){
 	int numbytes = 0;
 	unsigned char buf[buffer_size];
 	while(true){
-    	if ((numbytes = recv(sock, buf, buffer_size-1, 0)) == -1) {
-        	perror("recv");
-		return 0;
-    	}
-    	buf[numbytes] = '\0';
-    	printf("server: received '%s'\n", (unsigned char*)buf);
+    		if ((numbytes = recv(sock, buf, buffer_size-1, 0)) == -1) {
+        		perror("recv");
+			return 0;
+    		}
+    		buf[numbytes] = '\0';
+    		printf("server: received '%s'\n", (unsigned char*)buf);
+		if(!handle_msg(buf)){
+			break;
+		}
 	}
 
 
@@ -156,5 +163,22 @@ int handle_new_connection(int sock){
 		perror("send");
 		return 0;
 	}
+	return 1;
+}
+
+int handle_msg(unsigned char* buf){
+	std::string type, encdec, len, dat;
+	int length;
+	unsigned char* data;
+	std::string msg = std::string((const char*)buf);
+	std::cout << "msg: "<< msg << std::endl;
+	std::stringstream ss(msg);
+	ss >> type >> encdec >> len >> dat;
+	length = std::stoi(len);
+	std::cout << "type: "<< type << std::endl;
+	std::cout << "encdec: "<< encdec << std::endl;
+	std::cout << "length: "<< length << std::endl;
+	std::cout << "dat: "<< dat << std::endl;
+	//data = dat.c_str();
 	return 1;
 }

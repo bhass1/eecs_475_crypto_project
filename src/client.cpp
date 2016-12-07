@@ -16,7 +16,7 @@
 
 #define PORT "3499" // the port client will be connecting to 
 
-#define MAXDATASIZE 1024 // max number of bytes we can get at once 
+#define MAXDATASIZE 1024 // max number of data bytes we will send
 #define MAXHEADERSIZE 13
 
 int packetize(unsigned char*, std::string, std::string, int, unsigned char*);
@@ -98,7 +98,7 @@ int main(int argc, char *argv[])
     std::cout << "Recv : " << buf << std::endl;
 
 
-    out_len = packetize(out_buf, "EAT", "ENC", 15, (unsigned char*)"GOODBYE CRYPTO!");
+    out_len = packetize(out_buf, "EAT", "ENC", 16, (unsigned char*)"GOOD_BYE CRYPTO!");
     send(sockfd, out_buf, out_len, 0);
     if ((numbytes = recv(sockfd, buf, MAXDATASIZE+MAXHEADERSIZE, 0)) == -1) {
         perror("recv");

@@ -8,6 +8,7 @@
 //
 #include <stdio.h>
 #include <stdlib.h>
+#include <cassert>
 #include <unistd.h>
 #include <errno.h>
 #include <string.h>
@@ -33,6 +34,8 @@
 #define BACKLOG 10     // how many pending connections queue will hold
 
 void enc_and_tag(int, unsigned char *, int, unsigned char *, int*, unsigned char *, unsigned char *);
+void tag_128_aes_cbc(unsigned char *, int , unsigned char *, unsigned char *);
+void enc_128_aes_cbc(int, unsigned char *, int, unsigned char *, int*, unsigned char *, unsigned char *);
 int handle_new_connection(int);
 int handle_msg(int, unsigned char* );
 
@@ -225,6 +228,51 @@ int handle_msg(int sock,unsigned char* buf){
  */
 void enc_and_tag(int should_encrypt, unsigned char *in_buf, int size_in, unsigned char *out_buf, int* return_len, unsigned char *ckey, unsigned char *ivec) {
 
+  unsigned char ciphertext[MAXDATASIZE + 16];
+  int cipher_len = 0;
+  //in_buf is message
+  enc_128_aes_cbc(should_encrypt, in_buf, size_in, ciphertext, &cipher_len, ckey, ivec);
+  
+  unsigned char tag[16];
+  tag_128_aes_cbc(in_buf, size_in, tag, ckey);
+
+  std::cout << "cipher len: "<< cipher_len << std::endl;
+  std::cout << "cipher : "<< ciphertext << std::endl;
+  std::cout << "tag : "<< tag << std::endl;
+
+  memcpy(out_buf, tag, 16);
+  memcpy(out_buf+16, ciphertext, cipher_len);
+  std::cout << "out_buf : "<< out_buf << std::endl;
+  *return_len = cipher_len + 16;
+}
+
+void tag_128_aes_cbc(unsigned char *in_buf, int size_in, unsigned char *tag, unsigned char *ckey) {
+  //Get a new cipher envelope context
+  EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+
+  //Initialize the cipher envelope as 128-bit ECB with ckey, iv
+  unsigned char iv[16];
+  memset(iv, '\0', 16);
+  EVP_CipherInit(ctx, EVP_aes_128_cbc(), ckey, iv, 1);
+  unsigned blocksize = EVP_CIPHER_CTX_block_size(ctx);
+  unsigned char *cipher_buf = (unsigned char *) malloc(blocksize); //just hold onto the tag
+  int out_len;
+  //Update cipher (Uses EVP API)
+  EVP_CipherUpdate(ctx, cipher_buf, &out_len, in_buf, size_in);
+  memcpy(tag, cipher_buf, out_len);
+
+  // Now cipher the final block and write it out.
+  EVP_CipherFinal(ctx, cipher_buf, &out_len);
+  assert(out_len == blocksize);
+  memcpy(tag, cipher_buf, out_len);
+
+  // Free memory
+  free(cipher_buf);
+  EVP_CIPHER_CTX_free(ctx);
+}
+
+void enc_128_aes_cbc(int should_encrypt, unsigned  char *in_buf, int size_in, unsigned char *out_buf, int* size_out, unsigned char *ckey, unsigned char *ivec) {
+
   unsigned char *cipher_buf;
   unsigned blocksize;
   int out_len;
@@ -236,7 +284,6 @@ void enc_and_tag(int should_encrypt, unsigned char *in_buf, int size_in, unsigne
   //Initialize the cipher envelope as 256-bit CBC with ckey, iv, enc/dec mode
   EVP_CipherInit(ctx, EVP_aes_128_cbc(), ckey, ivec, should_encrypt);
   blocksize = EVP_CIPHER_CTX_block_size(ctx);
-  std::cout << "blocksize: "<<blocksize << std::endl;
   cipher_buf = (unsigned char *) malloc(MAXDATASIZE + blocksize);
 
   while (1) {
@@ -244,7 +291,6 @@ void enc_and_tag(int should_encrypt, unsigned char *in_buf, int size_in, unsigne
     EVP_CipherUpdate(ctx, cipher_buf, &out_len, in_buf, size_in);
     memcpy(out_buf+idx, cipher_buf, out_len);
     idx += out_len;
-    std::cout << "Num out: " << out_len << std::endl;
     if (out_len <= MAXDATASIZE) { // EOF
       break;
     }
@@ -253,11 +299,9 @@ void enc_and_tag(int should_encrypt, unsigned char *in_buf, int size_in, unsigne
   // Now cipher the final block and write it out.
   EVP_CipherFinal(ctx, cipher_buf, &out_len);
   memcpy(out_buf+idx, cipher_buf, out_len);
-  *return_len = idx + out_len;
+  *size_out = idx + out_len;
 
   // Free memory
   free(cipher_buf);
   EVP_CIPHER_CTX_free(ctx);
 }
-
-

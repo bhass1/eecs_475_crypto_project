@@ -230,20 +230,44 @@ void enc_and_tag(int should_encrypt, unsigned char *in_buf, int size_in, unsigne
 
   unsigned char ciphertext[MAXDATASIZE + 16];
   int cipher_len = 0;
-  //in_buf is message
-  enc_128_aes_cbc(should_encrypt, in_buf, size_in, ciphertext, &cipher_len, ckey, ivec);
-  
+
+  unsigned char in_tag[16], in_cipher[MAXDATASIZE];
+  if(!should_encrypt) {
+    //decryption mode - split off the tag
+    memcpy(in_tag, in_buf, 16);
+    memcpy(in_cipher, in_buf+16, size_in - 16);
+    enc_128_aes_cbc(should_encrypt, in_cipher, size_in-16, ciphertext, &cipher_len, ckey, ivec);
+    std::cout << "plain len: "<< cipher_len << std::endl;
+    std::cout << "plain : "<< ciphertext << std::endl;
+    std::cout << "in_tag : "<< in_tag << std::endl;
+  } else {
+    enc_128_aes_cbc(should_encrypt, in_buf, size_in, ciphertext, &cipher_len, ckey, ivec);
+    std::cout << "cipher len: "<< cipher_len << std::endl;
+    std::cout << "cipher : "<< ciphertext << std::endl;
+  }
+    
+
+  //At this point ciphertext has cipher bytes if should_encrypt, else has plaintext bytes
   unsigned char tag[16];
-  tag_128_aes_cbc(in_buf, size_in, tag, ckey);
+  if(!should_encrypt) {
+    tag_128_aes_cbc(ciphertext, cipher_len, tag, ckey);
+    std::cout << "tag : "<< tag << std::endl;
 
-  std::cout << "cipher len: "<< cipher_len << std::endl;
-  std::cout << "cipher : "<< ciphertext << std::endl;
-  std::cout << "tag : "<< tag << std::endl;
+    //VERIFY TAG!
+    memcpy(out_buf, ciphertext, cipher_len);
+    std::cout << "out_buf : "<< out_buf << std::endl;
+    *return_len = cipher_len;
 
-  memcpy(out_buf, tag, 16);
-  memcpy(out_buf+16, ciphertext, cipher_len);
-  std::cout << "out_buf : "<< out_buf << std::endl;
-  *return_len = cipher_len + 16;
+  } else {
+    tag_128_aes_cbc(in_buf, size_in, tag, ckey);
+    std::cout << "tag : "<< tag << std::endl;
+    memcpy(out_buf, tag, 16);
+    memcpy(out_buf+16, ciphertext, cipher_len);
+    std::cout << "out_buf : "<< out_buf << std::endl;
+    *return_len = cipher_len + 16;
+  }
+
+
 }
 
 void tag_128_aes_cbc(unsigned char *in_buf, int size_in, unsigned char *tag, unsigned char *ckey) {

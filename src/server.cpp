@@ -21,13 +21,27 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <openssl/evp.h>
+#include <openssl/aes.h>
 
-#define PORT "3490"  // the port users will be connecting to
+#define PORT "3499"  // the port users will be connecting to
+
+#define MAXDATASIZE 1024
+#define MAXHEADERSIZE 13//4+4+5 : "CBC ENC 1024 "
+	
 
 #define BACKLOG 10     // how many pending connections queue will hold
 
+void enc_and_tag(int, unsigned char *, int, unsigned char *, int*, unsigned char *, unsigned char *);
 int handle_new_connection(int);
-int handle_msg(unsigned char* );
+int handle_msg(int, unsigned char* );
+
+void printBytes(unsigned char* buf, int len){
+  for(int i = 0; i < len; i++ ) {
+    putc( isprint(buf[i]) ? buf[i] : '.' , stdout );
+  }
+  return;
+}
 
 void sigchld_handler(int s)
 {
@@ -141,19 +155,17 @@ int main(void)
 }
 
 int handle_new_connection(int sock){
-	int data_size = 1024;
-	int header_size = 13; //4+4+5 : "CBC ENC 1024 "
-	int buffer_size = data_size + header_size + 1; //+1 for null byte
+	int buffer_size = MAXDATASIZE + MAXHEADERSIZE + 1; //+1 for null byte
 	int numbytes = 0;
 	unsigned char buf[buffer_size];
 	while(true){
-    		if ((numbytes = recv(sock, buf, buffer_size-1, 0)) == -1) {
+    		if ((numbytes = recv(sock, buf, buffer_size-1, 0)) <= 0) {
         		perror("recv");
 			return 0;
     		}
     		buf[numbytes] = '\0';
     		printf("server: received '%s'\n", (unsigned char*)buf);
-		if(!handle_msg(buf)){
+		if(!handle_msg(sock,buf)){
 			break;
 		}
 	}
@@ -166,19 +178,86 @@ int handle_new_connection(int sock){
 	return 1;
 }
 
-int handle_msg(unsigned char* buf){
+int handle_msg(int sock,unsigned char* buf){
 	std::string type, encdec, len, dat;
-	int length;
-	unsigned char* data;
+	unsigned char data[MAXDATASIZE];
 	std::string msg = std::string((const char*)buf);
-	std::cout << "msg: "<< msg << std::endl;
 	std::stringstream ss(msg);
-	ss >> type >> encdec >> len >> dat;
-	length = std::stoi(len);
+	ss >> type >> encdec >> len;
+	std::cout << "msg: "<< msg << std::endl;
 	std::cout << "type: "<< type << std::endl;
 	std::cout << "encdec: "<< encdec << std::endl;
-	std::cout << "length: "<< length << std::endl;
-	std::cout << "dat: "<< dat << std::endl;
-	//data = dat.c_str();
+
+	int data_len = std::stoi(len);
+	std::cout << "data_len: "<< data_len << std::endl;
+
+	int hdr_len = type.length() + encdec.length() + len.length() + 3;
+	memcpy(data, buf+hdr_len, data_len);
+	std::cout << "data: "<<data<<std::endl;
+
+	unsigned char out_buf[MAXDATASIZE];
+
+	if(type.compare("CBC") == 0) {
+		//Perform AES-CBC on data
+	} else if(type.compare("CTR") == 0) {
+		//Perform AES-CTR on data
+	} else if(type.compare("TTE") == 0) {
+		//Perform Authenticate Then Encrypt
+	} else if(type.compare("EAT") == 0) {
+		//Perform Encrypt And Authenticate
+		int out_buf_len = 0;
+		enc_and_tag(encdec.compare("DEC") != 0, data, data_len, out_buf, &out_buf_len, (unsigned char *)"123456789", (unsigned char *)"123456789");
+		if (send(sock, out_buf, out_buf_len, 0) == -1){ 
+			perror("send");
+			return 0;
+		}
+	} else {
+		std::cout << "BAD PACKET TYPE! -- (" << type << ")"<<std::endl;
+		return 0;
+	}
 	return 1;
 }
+
+
+
+/**
+ * Encrypt or decrypt, depending on flag 'should_encrypt'
+ */
+void enc_and_tag(int should_encrypt, unsigned char *in_buf, int size_in, unsigned char *out_buf, int* return_len, unsigned char *ckey, unsigned char *ivec) {
+
+  unsigned char *cipher_buf;
+  unsigned blocksize;
+  int out_len;
+  int idx = 0;
+
+  //Get a new cipher envelope context
+  EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+
+  //Initialize the cipher envelope as 256-bit CBC with ckey, iv, enc/dec mode
+  EVP_CipherInit(ctx, EVP_aes_128_cbc(), ckey, ivec, should_encrypt);
+  blocksize = EVP_CIPHER_CTX_block_size(ctx);
+  std::cout << "blocksize: "<<blocksize << std::endl;
+  cipher_buf = (unsigned char *) malloc(MAXDATASIZE + blocksize);
+
+  while (1) {
+    //Update cipher (Uses CBC mode EVP API)
+    EVP_CipherUpdate(ctx, cipher_buf, &out_len, in_buf, size_in);
+    memcpy(out_buf+idx, cipher_buf, out_len);
+    idx += out_len;
+    std::cout << "Num out: " << out_len << std::endl;
+    if (out_len <= MAXDATASIZE) { // EOF
+      break;
+    }
+  }
+
+  // Now cipher the final block and write it out.
+  EVP_CipherFinal(ctx, cipher_buf, &out_len);
+  memcpy(out_buf+idx, cipher_buf, out_len);
+  *return_len = idx + out_len;
+
+  // Free memory
+  free(cipher_buf);
+  EVP_CIPHER_CTX_free(ctx);
+}
+
+

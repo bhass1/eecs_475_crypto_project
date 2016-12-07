@@ -14,9 +14,10 @@
 
 #define DEBUG 0
 
-#define PORT "3490" // the port client will be connecting to 
+#define PORT "3499" // the port client will be connecting to 
 
 #define MAXDATASIZE 1024 // max number of bytes we can get at once 
+#define MAXHEADERSIZE 13
 
 int packetize(unsigned char*, std::string, std::string, int, unsigned char*);
 
@@ -33,7 +34,7 @@ void *get_in_addr(struct sockaddr *sa)
 int main(int argc, char *argv[])
 {
     int sockfd, numbytes;  
-    char buf[MAXDATASIZE];
+    char buf[MAXDATASIZE+MAXHEADERSIZE+1];
     struct addrinfo hints, *servinfo, *p;
     int rv;
     char s[INET6_ADDRSTRLEN];
@@ -76,23 +77,44 @@ int main(int argc, char *argv[])
     inet_ntop(p->ai_family, get_in_addr((struct sockaddr *)p->ai_addr),
             s, sizeof s);
     printf("client: connecting to %s\n", s);
-
-    unsigned char out_buf[1024];
-    int out_len = packetize(out_buf, "CBC", "ENC", 5, (unsigned char*)"12345");
-    send(sockfd, out_buf, out_len, 0);
-    packetize(out_buf, "CNT", "DEC", 8, (unsigned char*)"12345678");
-    send(sockfd, out_buf, out_len, 0);
-    packetize(out_buf, "ETT", "ENC", 1, (unsigned char*)"1");
-    send(sockfd, out_buf, out_len, 0);
-    packetize(out_buf, "EAT", "DEC", 5, (unsigned char*)"12345");
-    send(sockfd, out_buf, out_len, 0);
-
     freeaddrinfo(servinfo); // all done with this structure
 
-    if ((numbytes = recv(sockfd, buf, MAXDATASIZE-1, 0)) == -1) {
+    unsigned char out_buf[MAXDATASIZE + MAXHEADERSIZE+1];
+    int out_len = packetize(out_buf, "EAT", "ENC", 13, (unsigned char*)"HELLO CRYPTO!");
+    send(sockfd, out_buf, out_len, 0);
+    if ((numbytes = recv(sockfd, buf, MAXDATASIZE+MAXHEADERSIZE, 0)) == -1) {
         perror("recv");
         exit(1);
     }
+    std::cout << "Recv : " << buf << std::endl;
+
+    packetize(out_buf, "EAT", "DEC", numbytes, (unsigned char*)buf);
+    send(sockfd, out_buf, out_len, 0);
+    if ((numbytes = recv(sockfd, buf, MAXDATASIZE+MAXHEADERSIZE, 0)) == -1) {
+        perror("recv");
+        exit(1);
+    }
+
+    std::cout << "Recv : " << buf << std::endl;
+
+
+    out_len = packetize(out_buf, "EAT", "ENC", 15, (unsigned char*)"GOODBYE CRYPTO!");
+    send(sockfd, out_buf, out_len, 0);
+    if ((numbytes = recv(sockfd, buf, MAXDATASIZE+MAXHEADERSIZE, 0)) == -1) {
+        perror("recv");
+        exit(1);
+    }
+    std::cout << "Recv : " << buf << std::endl;
+
+    packetize(out_buf, "EAT", "DEC", numbytes, (unsigned char*)buf);
+    send(sockfd, out_buf, out_len, 0);
+    if ((numbytes = recv(sockfd, buf, MAXDATASIZE+MAXHEADERSIZE, 0)) == -1) {
+        perror("recv");
+        exit(1);
+    }
+
+    std::cout << "Recv : " << buf << std::endl;
+
 
     buf[numbytes] = '\0';
     printf("client: received '%s'\n",buf);

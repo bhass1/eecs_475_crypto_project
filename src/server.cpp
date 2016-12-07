@@ -22,6 +22,8 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <chrono>
+#include <thread>
 #include <openssl/evp.h>
 #include <openssl/aes.h>
 
@@ -36,6 +38,7 @@
 void enc_and_tag(int, unsigned char *, int, unsigned char *, int*, unsigned char *, unsigned char *);
 void tag_128_aes_cbc(unsigned char *, int , unsigned char *, unsigned char *);
 void enc_128_aes_cbc(int, unsigned char *, int, unsigned char *, int*, unsigned char *, unsigned char *);
+int verify_tag_128(unsigned char *, unsigned char*);
 int handle_new_connection(int);
 int handle_msg(int, unsigned char* );
 
@@ -187,16 +190,16 @@ int handle_msg(int sock,unsigned char* buf){
 	std::string msg = std::string((const char*)buf);
 	std::stringstream ss(msg);
 	ss >> type >> encdec >> len;
-	std::cout << "msg: "<< msg << std::endl;
-	std::cout << "type: "<< type << std::endl;
-	std::cout << "encdec: "<< encdec << std::endl;
+	//std::cout << "msg: "<< msg << std::endl;
+	//std::cout << "type: "<< type << std::endl;
+	//std::cout << "encdec: "<< encdec << std::endl;
 
 	int data_len = std::stoi(len);
-	std::cout << "data_len: "<< data_len << std::endl;
+	//std::cout << "data_len: "<< data_len << std::endl;
 
 	int hdr_len = type.length() + encdec.length() + len.length() + 3;
 	memcpy(data, buf+hdr_len, data_len);
-	std::cout << "data: "<<data<<std::endl;
+	//std::cout << "data: "<<data<<std::endl;
 
 	unsigned char out_buf[MAXDATASIZE];
 
@@ -251,13 +254,19 @@ void enc_and_tag(int should_encrypt, unsigned char *in_buf, int size_in, unsigne
   unsigned char tag[16];
   if(!should_encrypt) {
     tag_128_aes_cbc(ciphertext, cipher_len, tag, ckey);
-    std::cout << "tag : "<< tag << std::endl;
+    std::cout << "   tag : "<< tag << std::endl;
 
     //VERIFY TAG!
-    memcpy(out_buf, ciphertext, cipher_len);
-    std::cout << "out_buf : "<< out_buf << std::endl;
-    *return_len = cipher_len;
-
+    if(verify_tag_128(in_tag, tag)){
+    	memcpy(out_buf, ciphertext, cipher_len);
+    	std::cout << "out_buf : "<< out_buf << std::endl;
+    	*return_len = cipher_len;
+    } else {
+        unsigned char * err = (unsigned char*)"ERROR, INVALID TAG";
+    	memcpy(out_buf, err, 19);
+    	std::cout << "out_buf : "<< out_buf << std::endl;
+    	*return_len = 19;
+    }
   } else {
     tag_128_aes_cbc(in_buf, size_in, tag, ckey);
     std::cout << "tag : "<< tag << std::endl;
@@ -328,4 +337,15 @@ void enc_128_aes_cbc(int should_encrypt, unsigned  char *in_buf, int size_in, un
   // Free memory
   free(cipher_buf);
   EVP_CIPHER_CTX_free(ctx);
+}
+
+int verify_tag_128(unsigned char * tag1, unsigned char * tag2){
+  for(int i = 0; i < 16; i++){
+    if(tag1[i] != tag2[i]) {
+      return 0;
+    } else {
+	std::this_thread::sleep_for(std::chrono::milliseconds(15));
+    }
+  } 
+  return 1;
 }

@@ -207,6 +207,12 @@ int handle_msg(int sock,unsigned char* buf){
 		//Perform AES-CBC on data
 	} else if(type.compare("CTR") == 0) {
 		//Perform AES-CTR on data
+		int out_buf_len = 0;
+		enc_and_tag(encdec.compare("DEC") != 0, data, data_len, out_buf, &out_buf_len, (unsigned char *)"123456789", (unsigned char *)"123456789");
+		if (send(sock, out_buf, out_buf_len, 0) == -1){ 
+			perror("send");
+			return 0;
+		}
 	} else if(type.compare("TTE") == 0) {
 		//Perform Authenticate Then Encrypt
 	} else if(type.compare("EAT") == 0) {
@@ -319,15 +325,10 @@ void enc_128_aes_cbc(int should_encrypt, unsigned  char *in_buf, int size_in, un
   blocksize = EVP_CIPHER_CTX_block_size(ctx);
   cipher_buf = (unsigned char *) malloc(MAXDATASIZE + blocksize);
 
-  while (1) {
     //Update cipher (Uses CBC mode EVP API)
     EVP_CipherUpdate(ctx, cipher_buf, &out_len, in_buf, size_in);
     memcpy(out_buf+idx, cipher_buf, out_len);
     idx += out_len;
-    if (out_len <= MAXDATASIZE) { // EOF
-      break;
-    }
-  }
 
   // Now cipher the final block and write it out.
   EVP_CipherFinal(ctx, cipher_buf, &out_len);
@@ -344,8 +345,38 @@ int verify_tag_128(unsigned char * tag1, unsigned char * tag2){
     if(tag1[i] != tag2[i]) {
       return 0;
     } else {
-	std::this_thread::sleep_for(std::chrono::milliseconds(15));
+	    std::this_thread::sleep_for(std::chrono::milliseconds(15));
     }
   } 
   return 1;
+}
+
+void enc_128_aes_ctr(int should_encrypt, unsigned  char *in_buf, int size_in, unsigned char *out_buf, int* size_out, unsigned char *ckey, unsigned char *ivec) {
+
+  unsigned char *cipher_buf;
+  unsigned blocksize;
+  int out_len;
+  int idx = 0;
+
+  //Get a new cipher envelope context
+  EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+
+  //Initialize the cipher envelope as 256-bit CBC with ckey, iv, enc/dec mode
+  EVP_CipherInit(ctx, EVP_aes_128_ctr(), ckey, ivec, should_encrypt);
+  blocksize = EVP_CIPHER_CTX_block_size(ctx);
+  cipher_buf = (unsigned char *) malloc(MAXDATASIZE + blocksize);
+
+    //Update cipher (Uses EVP API)
+    EVP_CipherUpdate(ctx, cipher_buf, &out_len, in_buf, size_in);
+    memcpy(out_buf+idx, cipher_buf, out_len);
+    idx += out_len;
+
+  // Now cipher the final block and write it out.
+  EVP_CipherFinal(ctx, cipher_buf, &out_len);
+  memcpy(out_buf+idx, cipher_buf, out_len);
+  *size_out = idx + out_len;
+
+  // Free memory
+  free(cipher_buf);
+  EVP_CIPHER_CTX_free(ctx);
 }

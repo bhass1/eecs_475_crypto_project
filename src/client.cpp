@@ -152,7 +152,7 @@ void tag_timing_attack(int sockfd, unsigned char * forged_tag){
     unsigned char in_buf[MAXDATASIZE + MAXHEADERSIZE+1];
     int out_len;
     int numbytes = 16;
-    unsigned char * cipher = (unsigned char *) "GOOD_BYE CRYPTO!";
+    unsigned char * cipher = (unsigned char *) "^sc07% *g5yawc,";
     unsigned char tag[17] = "aaaabbbbccccdddd";
     memcpy(in_buf, tag, 16);
     memcpy(in_buf+16, cipher, numbytes);

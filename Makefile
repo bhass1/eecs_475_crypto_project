@@ -1,6 +1,6 @@
 CC = g++
 CFLAGS = -std=c++11 -g
-SRC = lib/libcrypto.a src/test.cpp
+SRC = lib/libcrypto_old.a src/test.cpp
 LIBS = -I../openssl/include -Llib -lcrypto -ldl -lpthread
 TARGET = test
 

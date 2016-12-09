@@ -37,7 +37,7 @@
 
 void enc_and_tag(int, unsigned char *, int, unsigned char *, int*, unsigned char *, unsigned char *);
 void tag_128_aes_cbc(unsigned char *, int , unsigned char *, unsigned char *);
-void enc_128_aes_cbc(int, unsigned char *, int, unsigned char *, int*, unsigned char *, unsigned char *);
+int enc_128_aes_cbc(int, unsigned char *, int, unsigned char *, int*, unsigned char *, unsigned char *);
 int verify_tag_128(unsigned char *, unsigned char*);
 int handle_new_connection(int);
 int handle_msg(int, unsigned char* );
@@ -227,28 +227,38 @@ int handle_msg(int sock,unsigned char* buf){
 
 
 /**
- * Encrypt or decrypt, depending on flag 'should_encrypt'
+ * Implements encrypt and tag style authenticated encryption.
+ * ckey : Key used for scheme
+ * ivec : Initialization vector for scheme
+ * should_encrypt : if 0 runs decryption on in_buf; else runs encryption on in_buf
+ * out_buf : contains either tag||ciphertext or plaintext depending on should_encrypt
  */
 void enc_and_tag(int should_encrypt, unsigned char *in_buf, int size_in, unsigned char *out_buf, int* return_len, unsigned char *ckey, unsigned char *ivec) {
-
   unsigned char ciphertext[MAXDATASIZE + 16];
   int cipher_len = 0;
+  int status_flag;
 
   unsigned char in_tag[16], in_cipher[MAXDATASIZE];
   if(!should_encrypt) {
     //decryption mode - split off the tag
     memcpy(in_tag, in_buf, 16);
     memcpy(in_cipher, in_buf+16, size_in - 16);
-    enc_128_aes_cbc(should_encrypt, in_cipher, size_in-16, ciphertext, &cipher_len, ckey, ivec);
+    status_flag = enc_128_aes_cbc(should_encrypt, in_cipher, size_in-16, ciphertext, &cipher_len, ckey, ivec);
+    if(status_flag != 1) {
+        unsigned char * err = (unsigned char*)"DECRYPT FAIL";
+    	memcpy(out_buf, err, sizeof(err));
+    	std::cout << "out_buf : "<< out_buf << std::endl;
+    	*return_len = sizeof(err);
+	return;
+    }
     std::cout << "plain len: "<< cipher_len << std::endl;
     std::cout << "plain : "<< ciphertext << std::endl;
     std::cout << "in_tag : "<< in_tag << std::endl;
   } else {
-    enc_128_aes_cbc(should_encrypt, in_buf, size_in, ciphertext, &cipher_len, ckey, ivec);
+    status_flag = enc_128_aes_cbc(should_encrypt, in_buf, size_in, ciphertext, &cipher_len, ckey, ivec);
     std::cout << "cipher len: "<< cipher_len << std::endl;
     std::cout << "cipher : "<< ciphertext << std::endl;
   }
-    
 
   //At this point ciphertext has cipher bytes if should_encrypt, else has plaintext bytes
   unsigned char tag[16];
@@ -256,16 +266,15 @@ void enc_and_tag(int should_encrypt, unsigned char *in_buf, int size_in, unsigne
     tag_128_aes_cbc(ciphertext, cipher_len, tag, ckey);
     std::cout << "   tag : "<< tag << std::endl;
 
-    //VERIFY TAG!
     if(verify_tag_128(in_tag, tag)){
     	memcpy(out_buf, ciphertext, cipher_len);
     	std::cout << "out_buf : "<< out_buf << std::endl;
     	*return_len = cipher_len;
     } else {
         unsigned char * err = (unsigned char*)"ERROR, INVALID TAG";
-    	memcpy(out_buf, err, 19);
+    	memcpy(out_buf, err, sizeof(err));
     	std::cout << "out_buf : "<< out_buf << std::endl;
-    	*return_len = 19;
+    	*return_len = sizeof(err);
     }
   } else {
     tag_128_aes_cbc(in_buf, size_in, tag, ckey);
@@ -275,9 +284,76 @@ void enc_and_tag(int should_encrypt, unsigned char *in_buf, int size_in, unsigne
     std::cout << "out_buf : "<< out_buf << std::endl;
     *return_len = cipher_len + 16;
   }
-
-
 }
+
+/**
+ * Implements tag then encrypt style authenticated encryption.
+ * ckey : Key used for scheme
+ * ivec : Initialization vector for scheme
+ * should_encrypt : if 0 runs decryption on in_buf; else runs encryption on in_buf
+ * out_buf : contains either ciphertext or plaintext depending on should_encrypt
+ */
+void tag_then_enc(int should_encrypt, unsigned char *in_buf, int size_in, unsigned char *out_buf, int* return_len, unsigned char *ckey, unsigned char *ivec) {
+  unsigned char ciphertext[MAXDATASIZE + 16];
+  int cipher_len = 0;
+  int status_flag;
+
+  unsigned char in_tag[16], in_cipher[MAXDATASIZE];
+
+  unsigned char tag[16];
+  if(!should_encrypt) {
+   // //decryption mode - split off the tag
+   // memcpy(in_tag, in_buf, 16);
+   // memcpy(in_cipher, in_buf+16, size_in - 16);
+   // status_flag = enc_128_aes_cbc(should_encrypt, in_cipher, size_in-16, ciphertext, &cipher_len, ckey, ivec);
+   // if(status_flag != 1) {
+   //     unsigned char * err = (unsigned char*)"DECRYPT FAIL";
+   // 	memcpy(out_buf, err, sizeof(err));
+   // 	std::cout << "out_buf : "<< out_buf << std::endl;
+   // 	*return_len = sizeof(err);
+   //     return;
+   // }
+   // std::cout << "plain len: "<< cipher_len << std::endl;
+   // std::cout << "plain : "<< ciphertext << std::endl;
+   // std::cout << "in_tag : "<< in_tag << std::endl;
+  } else {
+    tag_128_aes_cbc(in_buf, size_in, tag, ckey);
+    std::cout << "   tag : "<< tag << std::endl;
+    //status_flag = enc_128_aes_cbc(should_encrypt, in_buf, size_in, ciphertext, &cipher_len, ckey, ivec);
+    //std::cout << "cipher len: "<< cipher_len << std::endl;
+    //std::cout << "cipher : "<< ciphertext << std::endl;
+  }
+
+  memcpy(ciphertext, tag, 16); //Put tag into front of buffer
+  memcpy(ciphertext+16, in_buf, size_in); //Put message into back of buffer
+
+  //At this point ciphertext has cipher bytes if should_encrypt, else has plaintext bytes
+  if(!should_encrypt) {
+  //  tag_128_aes_cbc(ciphertext, cipher_len, tag, ckey);
+  //  std::cout << "   tag : "<< tag << std::endl;
+
+  //  if(verify_tag_128(in_tag, tag)){
+  //  	memcpy(out_buf, ciphertext, cipher_len);
+  //  	std::cout << "out_buf : "<< out_buf << std::endl;
+  //  	*return_len = cipher_len;
+  //  } else {
+  //      unsigned char * err = (unsigned char*)"ERROR, INVALID TAG";
+  //  	memcpy(out_buf, err, sizeof(err));
+  //  	std::cout << "out_buf : "<< out_buf << std::endl;
+  //  	*return_len = sizeof(err);
+  //  }
+  } else {
+    status_flag = enc_128_aes_cbc(should_encrypt, ciphertext, size_in+16, out_buf, return_len, ckey, ivec);
+    if(status_flag != 1) {
+        unsigned char * err = (unsigned char*)"DECRYPT FAIL";
+    	memcpy(out_buf, err, sizeof(err));
+    	std::cout << "out_buf : "<< out_buf << std::endl;
+    	*return_len = sizeof(err);
+        return;
+    }
+  }
+}
+
 
 void tag_128_aes_cbc(unsigned char *in_buf, int size_in, unsigned char *tag, unsigned char *ckey) {
   //Get a new cipher envelope context
@@ -304,12 +380,14 @@ void tag_128_aes_cbc(unsigned char *in_buf, int size_in, unsigned char *tag, uns
   EVP_CIPHER_CTX_free(ctx);
 }
 
-void enc_128_aes_cbc(int should_encrypt, unsigned  char *in_buf, int size_in, unsigned char *out_buf, int* size_out, unsigned char *ckey, unsigned char *ivec) {
+int enc_128_aes_cbc(int should_encrypt, unsigned  char *in_buf, int size_in, unsigned char *out_buf, int* size_out, unsigned char *ckey, unsigned char *ivec) {
 
   unsigned char *cipher_buf;
   unsigned blocksize;
   int out_len;
   int idx = 0;
+
+  int err;
 
   //Get a new cipher envelope context
   EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
@@ -319,18 +397,19 @@ void enc_128_aes_cbc(int should_encrypt, unsigned  char *in_buf, int size_in, un
   blocksize = EVP_CIPHER_CTX_block_size(ctx);
   cipher_buf = (unsigned char *) malloc(MAXDATASIZE + blocksize);
 
-  while (1) {
-    //Update cipher (Uses CBC mode EVP API)
-    EVP_CipherUpdate(ctx, cipher_buf, &out_len, in_buf, size_in);
-    memcpy(out_buf+idx, cipher_buf, out_len);
-    idx += out_len;
-    if (out_len <= MAXDATASIZE) { // EOF
-      break;
-    }
+  //Update cipher (Uses CBC mode EVP API)
+  err = EVP_CipherUpdate(ctx, cipher_buf, &out_len, in_buf, size_in);
+  if(err != 1){
+    return 0;
   }
+  memcpy(out_buf+idx, cipher_buf, out_len);
+  idx += out_len;
 
   // Now cipher the final block and write it out.
-  EVP_CipherFinal(ctx, cipher_buf, &out_len);
+  err = EVP_CipherFinal(ctx, cipher_buf, &out_len);
+  if(err != 1){
+    return 0;
+  }
   memcpy(out_buf+idx, cipher_buf, out_len);
   *size_out = idx + out_len;
 

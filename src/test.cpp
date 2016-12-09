@@ -111,16 +111,20 @@ int main(int argc, char *argv[])
 
   // First encrypt the file
   fIN = fopen("plain_1.txt", "rb"); //File to be encrypted; plain text
-  fOUT = fopen("ctr_cipher_1.txt", "wb"); //File to be written; cipher text
-  en_de_crypt(TRUE, fIN, fOUT, ckey, ivec, "CTR");
-  fclose(fIN);
-  fclose(fOUT);
+  if(fIN){
+    fOUT = fopen("ctr_cipher_1.txt", "wb"); //File to be written; cipher text
+    en_de_crypt(TRUE, fIN, fOUT, ckey, ivec, "CTR");
+    fclose(fIN);
+    fclose(fOUT);
+  }
 
   fIN = fopen("plain_2.txt", "rb"); //File to be encrypted; plain text
-  fOUT = fopen("ctr_cipher_2.txt", "wb"); //File to be written; cipher text
-  en_de_crypt(TRUE, fIN, fOUT, ckey, ivec, "CTR");
-  fclose(fIN);
-  fclose(fOUT);
+  if(fIN){
+    fOUT = fopen("ctr_cipher_2.txt", "wb"); //File to be written; cipher text
+    en_de_crypt(TRUE, fIN, fOUT, ckey, ivec, "CTR");
+    fclose(fIN);
+    fclose(fOUT);
+  }
 
 
   return 0;

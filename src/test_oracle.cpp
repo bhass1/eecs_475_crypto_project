@@ -98,7 +98,7 @@ int padding_oracle(std::vector<unsigned char> cipher, unsigned char *ckey, unsig
     unsigned char *cipher_buf = (unsigned char *) malloc(BUFSIZE + blocksize);
     //Initialize the cipher envelope as 256-bit CBC with ckey, iv, enc/dec mode
     //cipher[31] = 0x2;
-    EVP_DecryptInit_ex(ctx, EVP_aes_128_cbc(), NULL, ckey, ivec);
+    EVP_CipherInit_ex(ctx, EVP_aes_128_cbc(), ckey, ivec, 0);
     blocksize = EVP_CIPHER_CTX_block_size(ctx);
 
 
@@ -110,14 +110,14 @@ int padding_oracle(std::vector<unsigned char> cipher, unsigned char *ckey, unsig
     //cipher[44] = s;
     printf("%x\n", cipher[30]);
     printf("%x\n", cipher[31]);
-    cipher[30] = 0x02;
-    cipher[31] = 0x02;
+    //cipher[30] = 0x02;
+    //cipher[31] = 0x02;
     std::cout << std::endl;
-    printf("%x\n", cipher[30]);
-    printf("%x\n", cipher[31]);
-    err = EVP_DecryptUpdate(ctx, cipher_buf, &out_len, cipher.data(), cipher.size());
+    //printf("%x\n", cipher[30]);
+    //printf("%x\n", cipher[31]);
+    err = EVP_CipherUpdate(ctx, cipher_buf, &out_len, cipher.data(), cipher.size());
     std::cout << "Output length: " << out_len << " err: " << err << std::endl;
-    err = EVP_DecryptFinal(ctx, cipher_buf, &out_len);
+    err = EVP_CipherFinal(ctx, cipher_buf, &out_len);
     std::cout << "Output length: " << out_len << " err: " << err << std::endl;
     std::cout << "Cipher_buf " << cipher_buf << std::endl;
     EVP_CIPHER_CTX_free(ctx);

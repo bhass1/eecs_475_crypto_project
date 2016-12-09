@@ -98,7 +98,7 @@ int padding_oracle(std::vector<unsigned char> cipher, unsigned char *ckey, unsig
     unsigned char *cipher_buf = (unsigned char *) malloc(BUFSIZE + blocksize);
     //Initialize the cipher envelope as 256-bit CBC with ckey, iv, enc/dec mode
     //cipher[31] = 0x2;
-    EVP_CipherInit_ex(ctx, EVP_aes_128_cbc(), ckey, ivec, 0);
+    EVP_CipherInit(ctx, EVP_aes_128_cbc(), ckey, ivec, 0);
     blocksize = EVP_CIPHER_CTX_block_size(ctx);
 
 
@@ -108,16 +108,20 @@ int padding_oracle(std::vector<unsigned char> cipher, unsigned char *ckey, unsig
     std::cout << "Size: " << cipher.size() << std::endl;
     //unsigned char s = 0x15;
     //cipher[44] = s;
-    printf("%x\n", cipher[30]);
-    printf("%x\n", cipher[31]);
+    // printf("%x\n", cipher[30]);
+    // printf("%x\n", cipher[31]);
     //cipher[30] = 0x02;
-    //cipher[31] = 0x02;
+    //cipher[31] = 0x01;
     std::cout << std::endl;
+    printf("%x\n", cipher[15]);
+    //cipher[15] = cipher[15]^0x71^0x10;
+    printf("%x\n", cipher[15]);
+    
     //printf("%x\n", cipher[30]);
     //printf("%x\n", cipher[31]);
     err = EVP_CipherUpdate(ctx, cipher_buf, &out_len, cipher.data(), cipher.size());
     std::cout << "Output length: " << out_len << " err: " << err << std::endl;
-    err = EVP_CipherFinal(ctx, cipher_buf, &out_len);
+    err = EVP_CipherFinal_ex(ctx, cipher_buf, &out_len);
     std::cout << "Output length: " << out_len << " err: " << err << std::endl;
     std::cout << "Cipher_buf " << cipher_buf << std::endl;
     EVP_CIPHER_CTX_free(ctx);
@@ -131,13 +135,22 @@ void padding_oracle_attack(int should_encrypt, std::string filename, FILE *ofp, 
   std::vector<unsigned char> cipher;
   file >> std::noskipws;
   std::copy(istream_iterator(file), istream_iterator(), std::back_inserter(cipher));
-  // std::ifstream ifs(filename, std::ios::in | std::ifstream::binary);
-  // std::vector<unsigned char> cipher{};
-  // std::istream_iterator<unsigned char> iter(ifs);
-  // std::istream_iterator<unsigned char> end;
-  // cipher.insert(std::back_inserter(cipher), iter, end);
+  int padding_start = 0;
   const unsigned BUFSIZE=4096;
-  padding_oracle(cipher, ckey, ivec);
+  unsigned char temp;
+  
+  for(unsigned i = 0; i < 16; i++){
+      temp = cipher[i];
+      cipher[i]++;
+    if(padding_oracle(cipher, ckey, ivec) == 0){
+      padding_start = i;
+      break;
+    }
+    cipher[i] = temp;
+}
+
+std::cout << "Padding starts at " << padding_start << std::endl;
+
   // unsigned char *read_buf = (unsigned char*) malloc(BUFSIZE);
   // unsigned char *cipher_buf;
   // unsigned blocksize;

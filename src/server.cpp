@@ -31,7 +31,7 @@
 #include <openssl/evp.h>
 #include <openssl/aes.h>
 
-#define PORT "3499"  // the port users will be connecting to
+#define PORT "3490"  // the port users will be connecting to
 
 #define MAXDATASIZE 1024
 #define MAXHEADERSIZE 13//4+4+5 : "CBC ENC 1024 "
@@ -246,6 +246,8 @@ int handle_msg(int sock, unsigned char* buf){
 			memcpy(tag, data, 16);
 			//calculate our own tag on the message
 			tag_128_aes_cbc(data+16, data_len-16, in_tag, (unsigned char *)"123456789");
+    			std::cout << "Calculated the tag: "<< in_tag << std::endl;
+    			std::cout << "Received tag in msg: "<< tag << std::endl;
 			//Verify the tags match
     			if(verify_tag_128(in_tag, tag)){
 				char* msg = (char*)"Tags match! Great success!";
@@ -410,16 +412,27 @@ void tag_128_aes_cbc(unsigned char *in_buf, int size_in, unsigned char *tag, uns
   memset(iv, '\0', 16);
   EVP_CipherInit(ctx, EVP_aes_128_cbc(), ckey, iv, 1);
   unsigned blocksize = EVP_CIPHER_CTX_block_size(ctx);
-  unsigned char *cipher_buf = (unsigned char *) malloc(blocksize); //just hold onto the tag
+  unsigned char *cipher_buf = (unsigned char *) malloc(8*blocksize); //just hold onto the tag
   int out_len;
+  int idx = 0;
   //Update cipher (Uses EVP API)
   EVP_CipherUpdate(ctx, cipher_buf, &out_len, in_buf, size_in);
-  memcpy(tag, cipher_buf, out_len);
+  if(out_len < 16){
+  	memcpy(tag, cipher_buf, out_len);
+	idx += out_len;
+  } else {
+  	memcpy(tag, cipher_buf, 16);
+	idx = 0; //rewrite on call to Final
+  }
 
   // Now cipher the final block and write it out.
   EVP_CipherFinal(ctx, cipher_buf, &out_len);
   assert(out_len == blocksize);
-  memcpy(tag, cipher_buf, out_len);
+  if(out_len < 16){
+  	memcpy(tag+idx, cipher_buf, out_len);
+  } else {
+  	memcpy(tag, cipher_buf, 16);
+  }
 
   // Free memory
   free(cipher_buf);

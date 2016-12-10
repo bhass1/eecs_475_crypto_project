@@ -81,6 +81,8 @@ void cbc_mac_var_length(int sockfd, unsigned char * forged_tag) {
 		exit(1);
 	}
 	memcpy(tag1, out_buf, 16);
+	tag1[16] = '\0';
+	std::cout << "Tag of '" << m1 << "' is '" << tag1 << "'" << std::endl;
 	
 	memcpy(in_buf, m2, 16);
 	out_len = packetize(out_buf, "TAG", "ENC", 16, (unsigned char *) in_buf);
@@ -90,6 +92,10 @@ void cbc_mac_var_length(int sockfd, unsigned char * forged_tag) {
 		exit(1);
 	}
 	memcpy(tag2, out_buf, 16);
+	tag2[16] = '\0';
+	std::cout << "Tag of '" << m2 << "' is '" << tag2 << "'" << std::endl;
+	
+	
 	
 	// tag2||m1||m2^tag1 should verify
 	unsigned char mnew[33];
@@ -106,4 +112,5 @@ void cbc_mac_var_length(int sockfd, unsigned char * forged_tag) {
 		perror("recv");
 		exit(1);
 	}
+	std::cout << "Verification of message '" << mnew << "' with tag '" << tag2 << "': " << out_buf << std::endl;
 }

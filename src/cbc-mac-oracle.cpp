@@ -2,9 +2,9 @@
 // Bill Hass, Nick Gaunt, 
 // Myles Pollie, Robert Minnema
 //
-// Performs AES 256-bit CBC encryption on a file in 4096B chunks to produce
-// a ciphertext file. Then it performs AES 256-bit CBC decryption on the 
-// ciphertext file to produce a decyrpted text file.
+// Performs an attack against CBC-MAC as the client in a client-server model
+//
+//
 //
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,15 +17,78 @@
 #include <netinet/in.h>
 #include <netdb.h>
 #include <arpa/inet.h>
-#include <sys/wait.h>
-#include <signal.h>
 #include <iostream>
-#include <sstream>
 #include <string>
-#include <chrono>
-#include <thread>
-#include <openssl/evp.h>
-#include <openssl/aes.h>
+
+#define DEBUG 0
+
+#define PORT "3499" // the port client will be connecting to
+
+#define MAXDATASIZE 1024 // max number of data bytes we will send
+#define MAXHEADERSIZE 13
+
+int packetize(unsigned char*, std::string, std::string, int, unsigned char*);
+void cbc_mac_var_length(int);
+
+// get sockaddr, IPv4 or IPv6:
+void *get_in_addr(struct sockaddr *sa)
+{
+    if (sa->sa_family == AF_INET) {
+        return &(((struct sockaddr_in*)sa)->sin_addr);
+    }
+
+    return &(((struct sockaddr_in6*)sa)->sin6_addr);
+}
+
+int main(int argc, char *argv[]) {
+	int sockfd, numbytes;  
+    char buf[MAXDATASIZE+MAXHEADERSIZE+1];
+    struct addrinfo hints, *servinfo, *p;
+    int rv;
+    char s[INET6_ADDRSTRLEN];
+
+    if (argc != 2) {
+        fprintf(stderr,"usage: client hostname\n");
+        exit(1);
+    }
+
+    memset(&hints, 0, sizeof hints);
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+
+    if ((rv = getaddrinfo(argv[1], PORT, &hints, &servinfo)) != 0) {
+        fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
+        return 1;
+    }
+// loop through all the results and connect to the first we can
+    for(p = servinfo; p != NULL; p = p->ai_next) {
+        if ((sockfd = socket(p->ai_family, p->ai_socktype,
+                p->ai_protocol)) == -1) {
+            perror("client: socket");
+            continue;
+        }
+
+        if (connect(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
+            close(sockfd);
+            perror("client: connect");
+            continue;
+        }
+
+        break;
+    }
+
+    if (p == NULL) {
+        fprintf(stderr, "client: failed to connect\n");
+        return 2;
+    }
+
+    inet_ntop(p->ai_family, get_in_addr((struct sockaddr *)p->ai_addr),
+            s, sizeof s);
+    printf("client: connecting to %s\n", s);
+    freeaddrinfo(servinfo); // all done with this structure
+	
+	cbc_mac_var_length(sockfd);
+}
 
 //Takes string type, enc_dec, integer length and data bytes to construct
 //a client packet to send to the server socket
@@ -39,32 +102,7 @@ int packetize(unsigned char* out_buf, std::string type, std::string enc_dec, int
 	return 1024;
 }
 
-void tag_128_aes_cbc(unsigned char *in_buf, int size_in, unsigned char *tag, unsigned char *ckey) {
-  //Get a new cipher envelope context
-  EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
-
-  //Initialize the cipher envelope as 128-bit ECB with ckey, iv
-  unsigned char iv[16];
-  memset(iv, '\0', 16);
-  EVP_CipherInit(ctx, EVP_aes_128_cbc(), ckey, iv, 1);
-  unsigned blocksize = EVP_CIPHER_CTX_block_size(ctx);
-  unsigned char *cipher_buf = (unsigned char *) malloc(blocksize); //just hold onto the tag
-  int out_len;
-  //Update cipher (Uses EVP API)
-  EVP_CipherUpdate(ctx, cipher_buf, &out_len, in_buf, size_in);
-  memcpy(tag, cipher_buf, out_len);
-
-  // Now cipher the final block and write it out.
-  EVP_CipherFinal(ctx, cipher_buf, &out_len);
-  assert(out_len == blocksize);
-  memcpy(tag, cipher_buf, out_len);
-
-  // Free memory
-  free(cipher_buf);
-  EVP_CIPHER_CTX_free(ctx);
-}
-
-void cbc_mac_var_length(int sockfd, unsigned char * forged_tag) {
+void cbc_mac_var_length(int sockfd) {
 	unsigned char out_buf[MAXDATASIZE + MAXHEADERSIZE + 1]
 	unsigned char in_buf[MAXDATASIZE + MAXHEADERSIZE + 1]
 	int out_len;

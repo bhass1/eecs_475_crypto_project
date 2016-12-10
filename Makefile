@@ -2,7 +2,7 @@ CC = g++
 CFLAGS = -std=c++11 -g
 SRC = lib/libcrypto_old.a src/test.cpp
 SRC1 = lib/libcrypto_old.a src/test_oracle.cpp
-SRC1 = lib/libcrypto_old.a src/cbc-mac-oracle.cpp
+SRC2 = lib/libcrypto_old.a src/cbc-mac-oracle.cpp
 LIBS = -I../openssl/include -Llib -lcrypto -ldl -lpthread
 TARGET = test
 

@@ -103,11 +103,11 @@ int packetize(unsigned char* out_buf, std::string type, std::string enc_dec, int
 }
 
 void cbc_mac_var_length(int sockfd) {
-	unsigned char out_buf[MAXDATASIZE + MAXHEADERSIZE + 1]
-	unsigned char in_buf[MAXDATASIZE + MAXHEADERSIZE + 1]
+	unsigned char out_buf[MAXDATASIZE + MAXHEADERSIZE + 1];
+	unsigned char in_buf[MAXDATASIZE + MAXHEADERSIZE + 1];
 	int out_len;
 	int numbytes = 16;
-	unsigned char tag1[17], tag2[17]
+	unsigned char tag1[17], tag2[17];
 	unsigned char m1[17] = "abcdefghijklmnop";
 	unsigned char m2[17] = "1234567890123456";
 	

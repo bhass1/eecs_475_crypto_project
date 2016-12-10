@@ -1,12 +1,16 @@
 //EECS 475 Intro Crypto University of Michigan
-// Bill Hass, Nick Gaunt, 
-// Myles Pollie, Robert Minnema
+// (c) Bill Hass 2016 - billhass@umich.edu
 //
-// Performs AES 256-bit CBC encryption on a file in 4096B chunks to produce
-// a ciphertext file. Then it performs AES 256-bit CBC decryption on the 
-// ciphertext file to produce a decyrpted text file.
+// Server implementation for various encryption schemes.
+// Protocol:
+//    '<type> <enc/dec> <length> <data>'
+// <type> is CTR, CBC, TTE, EAT
+// <enc/dec> is either DEC or ENC
+// <length> is integer length of data less than 1024
+// <data> is 
 //
 #include <stdio.h>
+#include <cstring>
 #include <stdlib.h>
 #include <cassert>
 #include <unistd.h>
@@ -31,6 +35,8 @@
 
 #define MAXDATASIZE 1024
 #define MAXHEADERSIZE 13//4+4+5 : "CBC ENC 1024 "
+
+#define DEBUG 0
 	
 
 #define BACKLOG 10     // how many pending connections queue will hold
@@ -184,22 +190,22 @@ int handle_new_connection(int sock){
 	return 1;
 }
 
-int handle_msg(int sock,unsigned char* buf){
+int handle_msg(int sock, unsigned char* buf){
 	std::string type, encdec, len, dat;
 	unsigned char data[MAXDATASIZE];
 	std::string msg = std::string((const char*)buf);
 	std::stringstream ss(msg);
 	ss >> type >> encdec >> len;
-	//std::cout << "msg: "<< msg << std::endl;
-	//std::cout << "type: "<< type << std::endl;
-	//std::cout << "encdec: "<< encdec << std::endl;
+	DEBUG && std::cout << "msg: "<< msg << std::endl;
+	DEBUG && std::cout << "type: "<< type << std::endl;
+	DEBUG && std::cout << "encdec: "<< encdec << std::endl;
 
 	int data_len = std::stoi(len);
-	//std::cout << "data_len: "<< data_len << std::endl;
+	DEBUG && std::cout << "data_len: "<< data_len << std::endl;
 
 	int hdr_len = type.length() + encdec.length() + len.length() + 3;
 	memcpy(data, buf+hdr_len, data_len);
-	//std::cout << "data: "<<data<<std::endl;
+	DEBUG && std::cout << "data: "<<data<<std::endl;
 
 	unsigned char out_buf[MAXDATASIZE];
 
@@ -222,6 +228,37 @@ int handle_msg(int sock,unsigned char* buf){
 		if (send(sock, out_buf, out_buf_len, 0) == -1){ 
 			perror("send");
 			return 0;
+		}
+	} else if(type.compare("TAG") == 0) {
+		//Perform message authentication
+		if(encdec.compare("ENC") == 0) {
+			tag_128_aes_cbc(data, data_len, out_buf, (unsigned char *)"123456789");
+			out_buf[17] = '\0';
+    			std::cout << "tag : "<< out_buf << std::endl;
+			if (send(sock, out_buf, 16, 0) == -1){ 
+				perror("send");
+				return 0;
+			}
+		} else {
+			unsigned char in_tag[16], tag[16];
+			unsigned char messge[data_len-16];
+
+			memcpy(tag, data, 16);
+			//calculate our own tag on the message
+			tag_128_aes_cbc(data+16, data_len-16, in_tag, (unsigned char *)"123456789");
+			//Verify the tags match
+    			if(verify_tag_128(in_tag, tag)){
+				char* msg = (char*)"Tags match! Great success!";
+    				memcpy(out_buf, msg, strlen(msg));
+    			} else {
+    			    	char * msg = (char*)"ERROR, INVALID TAG";
+    				memcpy(out_buf, msg, strlen(msg));
+    			}
+    			std::cout << "out_buf : "<< out_buf << std::endl;
+			if (send(sock, out_buf, strlen((const char*)out_buf), 0) == -1){ 
+				perror("send");
+				return 0;
+			}
 		}
 	} else {
 		std::cout << "BAD PACKET TYPE! -- (" << type << ")"<<std::endl;
@@ -250,13 +287,15 @@ void enc_and_tag(int should_encrypt, unsigned char *in_buf, int size_in, unsigne
     memcpy(in_tag, in_buf, 16);
     memcpy(in_cipher, in_buf+16, size_in - 16);
     status_flag = enc_128_aes_cbc(should_encrypt, in_cipher, size_in-16, ciphertext, &cipher_len, ckey, ivec);
-    if(status_flag != 1) {
-        unsigned char * err = (unsigned char*)"DECRYPT FAIL";
-    	memcpy(out_buf, err, sizeof(err));
-    	std::cout << "out_buf : "<< out_buf << std::endl;
-    	*return_len = sizeof(err);
-	return;
-    }
+    //if(status_flag != 1) {
+    //    unsigned char * err = (unsigned char*)"DECRYPT FAIL";
+    //    int err_len = strlen((const char*) err);
+    //	std::cout << "sizeof err: "<< err_len << std::endl;
+    //	memcpy(out_buf, err, err_len);
+    //	std::cout << "out_buf : "<< out_buf << std::endl;
+    //	*return_len = err_len;
+    //    return;
+    //}
     std::cout << "plain len: "<< cipher_len << std::endl;
     std::cout << "plain : "<< ciphertext << std::endl;
     std::cout << "in_tag : "<< in_tag << std::endl;
@@ -277,10 +316,11 @@ void enc_and_tag(int should_encrypt, unsigned char *in_buf, int size_in, unsigne
     	std::cout << "out_buf : "<< out_buf << std::endl;
     	*return_len = cipher_len;
     } else {
-        unsigned char * err = (unsigned char*)"ERROR, INVALID TAG";
-    	memcpy(out_buf, err, sizeof(err));
+        char * err = (char*)"ERROR, INVALID TAG";
+	int err_len = strlen(err);
+    	memcpy(out_buf, err, err_len);
     	std::cout << "out_buf : "<< out_buf << std::endl;
-    	*return_len = sizeof(err);
+    	*return_len = err_len;
     }
   } else {
     tag_128_aes_cbc(in_buf, size_in, tag, ckey);
@@ -360,7 +400,7 @@ void tag_then_enc(int should_encrypt, unsigned char *in_buf, int size_in, unsign
   }
 }
 
-
+//Takes input buffer and size to produce tag given key
 void tag_128_aes_cbc(unsigned char *in_buf, int size_in, unsigned char *tag, unsigned char *ckey) {
   //Get a new cipher envelope context
   EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();

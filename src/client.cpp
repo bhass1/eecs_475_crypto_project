@@ -21,7 +21,7 @@
 #define MAXHEADERSIZE 13
 
 int packetize(unsigned char*, std::string, std::string, int, unsigned char*);
-void tag_timing_attack(int, unsigned char *);
+void tag_timing_attack(unsigned char*, int, int, unsigned char *);
 
 // get sockaddr, IPv4 or IPv6:
 void *get_in_addr(struct sockaddr *sa)
@@ -82,6 +82,34 @@ int main(int argc, char *argv[])
     freeaddrinfo(servinfo); // all done with this structure
 
     unsigned char out_buf[MAXDATASIZE + MAXHEADERSIZE+1];
+
+//////////////////
+    unsigned char* message = (unsigned char *)"TUBULAR TITASTIC GOOD!";
+    int len = packetize(out_buf, "TAG", "ENC", 23, message);
+    send(sockfd, out_buf, len, 0);
+    if ((numbytes = recv(sockfd, buf, MAXDATASIZE+MAXHEADERSIZE, 0)) == -1) {
+        perror("recv");
+        exit(1);
+    }
+    std::cout << "Recv : " << buf << std::endl;
+
+    unsigned char check[39];
+    memcpy(check, buf, 16);
+    memcpy(check+16, message, 23);
+
+    len = packetize(out_buf, "TAG", "DEC", 39, (unsigned char*) check);
+    send(sockfd, out_buf, len, 0);
+    if ((numbytes = recv(sockfd, buf, MAXDATASIZE+MAXHEADERSIZE, 0)) == -1) {
+        perror("recv");
+        exit(1);
+    }
+    std::cout << "Recv : " << buf << std::endl;
+
+    exit(1);
+//////////////////
+
+
+
     int out_len = packetize(out_buf, "EAT", "ENC", 13, (unsigned char*)"HELLO CRYPTO!");
     send(sockfd, out_buf, out_len, 0);
     if ((numbytes = recv(sockfd, buf, MAXDATASIZE+MAXHEADERSIZE, 0)) == -1) {
@@ -99,9 +127,18 @@ int main(int argc, char *argv[])
     std::cout << "Recv : " << buf << std::endl;
 
     unsigned char forgery[17];
-    tag_timing_attack(sockfd, forgery);
+    unsigned char * cipher = (unsigned char *) "^sc07% *g5yawc,";
+    tag_timing_attack(cipher, sizeof(cipher), sockfd, forgery);
     forgery[16] = '\0';
     std::cout << "FORGERY FOUND : " << forgery << std::endl;
+
+    packetize(out_buf, "TAG", "DEC", 16, forgery);
+    send(sockfd, out_buf, 16, 0);
+    if ((numbytes = recv(sockfd, buf, MAXDATASIZE+MAXHEADERSIZE, 0)) == -1) {
+        perror("recv");
+        exit(1);
+    }
+    std::cout << "Recv : " << buf << std::endl;
 
     exit(1);
 
@@ -145,26 +182,25 @@ int packetize(unsigned char* out_buf, std::string type, std::string enc_dec, int
 	return 1024;
 }
 
-void tag_timing_attack(int sockfd, unsigned char * forged_tag){
+void tag_timing_attack(unsigned char* cipher, int cipher_bytes, int sockfd, unsigned char * forged_tag){
     double thresh_millis = 15.0;
     double diff = 0.0;
     unsigned char out_buf[MAXDATASIZE + MAXHEADERSIZE+1];
     unsigned char in_buf[MAXDATASIZE + MAXHEADERSIZE+1];
-    int out_len;
-    int numbytes = 16;
-    unsigned char * cipher = (unsigned char *) "^sc07% *g5yawc,";
+    int out_len, numbytes;
     unsigned char tag[17] = "aaaabbbbccccdddd";
     memcpy(in_buf, tag, 16);
-    memcpy(in_buf+16, cipher, numbytes);
+    memcpy(in_buf+16, cipher, cipher_bytes);
     struct timeval t1, t2;
     int sweep = 0;
     while(sweep < 16) {
       for(int i = 0; i < 256; i++){
         in_buf[sweep] = (unsigned char) i;
-        out_len = packetize(out_buf, "EAT", "DEC", numbytes+16, (unsigned char*)in_buf);
+        out_len = packetize(out_buf, "EAT", "DEC", cipher_bytes+16, (unsigned char*)in_buf);
+        std::cout << "SENDIGN: "<< out_buf << std::endl;
         send(sockfd, out_buf, out_len, 0);
         gettimeofday(&t1, NULL);
-        if ((numbytes = recv(sockfd, out_buf, MAXDATASIZE+MAXHEADERSIZE, 0)) == -1) {
+        if ((numbytes= recv(sockfd, out_buf, MAXDATASIZE+MAXHEADERSIZE, 0)) == -1) {
             perror("recv");
             exit(1);
         }

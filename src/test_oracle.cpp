@@ -1,10 +1,10 @@
 //EECS 475 Intro Crypto University of Michigan
-// Bill Hass, Nick Gaunt, 
-// Myles Pollie, Robert Minnema
+// Bill Hass
+// Myles Pollie
 //
-// Performs AES 256-bit CBC encryption on a file in 4096B chunks to produce
-// a ciphertext file. Then it performs AES 256-bit CBC decryption on the 
-// ciphertext file to produce a decyrpted text file.
+// Performs padding oracle attack on AES 128-bit CBC encryption.
+// Uses plain.txt for generating the cipher, then guesses plain-txt
+// from the cipher by submitting queries to an oracle.
 //
 #include <string.h>
 #include <stdio.h>
@@ -33,6 +33,7 @@
 int find_padding(unsigned char *, std::vector<unsigned char>);
 std::vector<unsigned char> makeV1(int);
 std::vector<unsigned char> makeV3(int, std::vector<unsigned char>, int);
+std::vector<unsigned char> blockCracker(std::vector<unsigned char> iveccipher, int b);
 
 unsigned char ckey[] = "1122334455667788";
 unsigned char ivec[] = "llmmnnooppqqrrss";
@@ -48,16 +49,12 @@ void printBytes(unsigned char* buf, int len){
  * Encrypt or decrypt, depending on flag 'should_encrypt'
  */
 void en_de_crypt(int should_encrypt, FILE *ifp, FILE *ofp, unsigned char *ckey, unsigned char *ivec, std::string mode) {
-
   unsigned char *read_buf = (unsigned char*) malloc(BUFSIZE);
   unsigned char *cipher_buf;
   unsigned blocksize;
   int out_len;
 
-  //Get a new cipher envelope context
   EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
-
-  //Initialize the cipher envelope as 256-bit CBC with ckey, iv, enc/dec mode
   EVP_CipherInit(ctx, EVP_aes_128_cbc(), ckey, ivec, should_encrypt);
 
   //Initialize the cipher envelope as 128-bit CBC with ckey, iv, enc/dec mode
@@ -98,6 +95,7 @@ void en_de_crypt(int should_encrypt, FILE *ifp, FILE *ofp, unsigned char *ckey, 
   EVP_CIPHER_CTX_free(ctx);
 }
 
+//Decrypt function that returns 0 if there was a decryption error
 int padding_oracle(unsigned char* ivec, std::vector<unsigned char> cipher){
     EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
     unsigned char *read_buf = (unsigned char*) malloc(BUFSIZE);
@@ -111,20 +109,21 @@ int padding_oracle(unsigned char* ivec, std::vector<unsigned char> cipher){
 }
 
 void padding_oracle_attack(int should_encrypt, std::string filename, FILE *ofp){
+  //Read in the ciphertext
   typedef std::istream_iterator<unsigned char> istream_iterator;
   std::ifstream file(filename);
   std::vector<unsigned char> cipher;
   file >> std::noskipws;
   std::copy(istream_iterator(file), istream_iterator(), std::back_inserter(cipher));
-  unsigned char ivec[] = "llmmnnooppqqrrss";
+
+  std::cout << "CipherSize: " << cipher.size() << std::endl;
+  
 
   //Scan through cipher to see if changing a byte causes padding error
-  std::cout << "CipherSize: " << cipher.size() << std::endl;
-
   int pad_start = find_padding(ivec, cipher);
   int b = BLOCKSIZE - pad_start;
 
-  //our first guess is size of block minus pad
+/*  //our first guess is size of block minus pad
   std::vector<unsigned char> plaintext(BLOCKSIZE - b); 
 
   for(unsigned k = 16; k > 0; k--){
@@ -136,9 +135,7 @@ void padding_oracle_attack(int should_encrypt, std::string filename, FILE *ofp){
 
     std::cout << "v1: ";
     printBytes(v1.data(), v1.size());
-    std::cout << std::endl;/* << "v2: ";
-    printBytes(v2.data(), v2.size());
-    std::cout << std::endl;*/
+    std::cout << std::endl;
 
     //Begin looping to find value of i (which tells us plaintext byte at index)
     for(unsigned i = 0; i < 256; ++i){
@@ -168,9 +165,16 @@ void padding_oracle_attack(int should_encrypt, std::string filename, FILE *ofp){
       std::cout<<std::endl;
       break;
     }
+  }*/
+  std::vector<unsigned char> iveccipher(cipher.size()+BLOCKSIZE);
+  for(int i = 0; i < BLOCKSIZE; i++){
+    iveccipher.at(i) = ivec[i];
   }
+  for(int i = 0; i < cipher.size(); i++){
+    iveccipher.at(i+BLOCKSIZE) = cipher.at(i);
+  }
+  blockCracker(iveccipher, b);
 }
-
 
 // Returns the index where the padding starts in the ciphertext
 int find_padding(unsigned char * ivec, std::vector<unsigned char> cipher){
@@ -185,6 +189,65 @@ int find_padding(unsigned char * ivec, std::vector<unsigned char> cipher){
     }
     cipher.at(i) = temp;
   }
+}
+
+//Takes IV||Ciphertext and padding b then cracks the last block of the ciphertext
+std::vector<unsigned char> blockCracker(std::vector<unsigned char> iveccipher, int b){
+  int pad_start = -1*(b - BLOCKSIZE);
+  //our guess is size of block minus pad
+  std::vector<unsigned char> plaintext(BLOCKSIZE - b); 
+
+  if(iveccipher.size() <= BLOCKSIZE){
+    return iveccipher; //nothing to crack, ivec is sent over wire so we know it
+  }
+
+  for(unsigned k = 16; k > 0; k--){
+    std::vector<unsigned char> tempCipher = iveccipher;
+    std::cout << "k= "<<k<<" Padding starts at " << pad_start << " b = "<< b << std::endl;
+    std::vector<unsigned char> v1(BLOCKSIZE), v3(BLOCKSIZE);
+
+    v1 = makeV1(b);
+
+    std::cout << "v1: ";
+    printBytes(v1.data(), v1.size());
+    std::cout << std::endl;
+
+    //Begin looping to find value of i (which tells us plaintext byte at index)
+    for(unsigned i = 0; i < 256; ++i){
+      v3 = makeV3(b, v1, i);
+
+      for(unsigned j = iveccipher.size()-2*BLOCKSIZE; j < iveccipher.size() - BLOCKSIZE; ++j){
+        iveccipher.at(j) = v3.at(j-iveccipher.size()+2*BLOCKSIZE)^iveccipher.at(j);
+      }
+
+      //Process iveccipher into uchar* IV and vector<uchar> cipher
+      unsigned char ivec[BLOCKSIZE];
+      memcpy(ivec, iveccipher.data(), BLOCKSIZE);
+      std::vector<unsigned char> cipher(iveccipher.size()-BLOCKSIZE);
+      for(int j = 0; j < iveccipher.size() - BLOCKSIZE; j++){
+        cipher.at(j) = iveccipher.at(j+BLOCKSIZE);
+      }
+
+      if(padding_oracle(ivec, cipher)){
+        unsigned char B = (unsigned char)(b+1)^(unsigned char)i;
+        std::cout << "B: " << B << std::endl;
+        plaintext.insert(plaintext.begin(),B);
+        pad_start--;
+        b++;
+        break;
+      }
+      else{
+        iveccipher = tempCipher;
+      }
+    }
+    if(pad_start == 0){
+      std::cout << "Plaintext: ";
+      printBytes(plaintext.data(), plaintext.size());
+      std::cout<<std::endl;
+      break;
+    }
+  }
+  return plaintext;
 }
 
 std::vector<unsigned char> makeV1(int b){

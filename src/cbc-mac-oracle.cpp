@@ -107,9 +107,9 @@ void cbc_mac_var_length(int sockfd) {
 	unsigned char in_buf[MAXDATASIZE + MAXHEADERSIZE + 1];
 	int out_len;
 	int numbytes = 16;
-	unsigned char tag1[17], tag2[17];
+	unsigned char tag1[17], tag2[17], tag3[17], tagtest[17];
 	unsigned char m1[17] = "abcdefghijklmnop";
-	unsigned char m2[17] = "1234567890123456";
+	unsigned char m2[17] = "ABCDEFGHIJKLMNOP";
 	
 	memcpy(in_buf, m1, 16);
 	out_len = packetize(out_buf, "TAG", "ENC", 16, (unsigned char *)in_buf);
@@ -120,7 +120,7 @@ void cbc_mac_var_length(int sockfd) {
 	}
 	memcpy(tag1, out_buf, 16);
 	tag1[16] = '\0';
-	std::cout << "Tag of '" << m1 << "' is '" << "'" << std::endl;
+	std::cout << "Tag of '" << m1 << "' is '" << tag1 << "'" << std::endl;
 	
 	memcpy(in_buf, m2, 16);
 	out_len = packetize(out_buf, "TAG", "ENC", 16, (unsigned char *) in_buf);
@@ -142,6 +142,34 @@ void cbc_mac_var_length(int sockfd) {
 		mnew[i + 16] = m2[i] ^ tag1[i];
 	}
 	mnew[32] = '\0';
+	
+	memcpy(in_buf, mnew + 16, 16);
+	out_len = packetize(out_buf, "TAG", "ENC", 32, (unsigned char *) in_buf);
+	send(sockfd, out_buf, out_len, 0);
+	if ((numbytes = recv(sockfd, out_buf, MAXDATASIZE+MAXHEADERSIZE, 0)) == -1) {
+		perror("recv");
+		exit(1);
+	}
+	memcpy(tagtest, out_buf, 16);
+	std::cout << "Tag of '" << mnew + 16 << "' is '" << tagtest << "'" << std::endl;
+	
+	memcpy(in_buf, mnew, 32);
+	out_len = packetize(out_buf, "TAG", "ENC", 32, (unsigned char *) in_buf);
+	send(sockfd, out_buf, out_len, 0);
+	if ((numbytes = recv(sockfd, out_buf, MAXDATASIZE+MAXHEADERSIZE, 0)) == -1) {
+		perror("recv");
+		exit(1);
+	}
+	memcpy(tag3, out_buf, 16);
+	std::cout << tag3 << std::endl;
+	std::cout << tag2 << std::endl;
+	for (int i = 0; i < 16; i++) {
+		if (tag2[i] != tag3[i])
+			std::cout << "Fail" << std::endl;
+	}
+	std::cout << "Tag of '" << mnew << "' is '" << tag3 << "'" << std::endl;
+	
+	
 	memcpy(in_buf, tag2, 16);
 	memcpy(in_buf + 16, mnew, 32);
 	out_len = packetize(out_buf, "TAG", "DEC", 48, (unsigned char *) in_buf);
@@ -151,6 +179,7 @@ void cbc_mac_var_length(int sockfd) {
 		perror("recv");
 		exit(1);
 	}
+	out_buf[numbytes] = '\0';
 	std::cout << "bytes: " << numbytes << std::endl;
 	std::cout << "Out_buf: " << out_buf << std::endl;
 	std::cout << "Verification of message '" << mnew << "' with tag '" << tag2 << "': " << out_buf << std::endl;

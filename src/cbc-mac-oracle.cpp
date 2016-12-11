@@ -20,15 +20,23 @@
 #include <iostream>
 #include <string>
 
-#define DEBUG 0
+#define DEBUG 1
 
 #define PORT "3490" // the port client will be connecting to
 
+#define BLOCKSIZE 16
 #define MAXDATASIZE 1024 // max number of data bytes we will send
 #define MAXHEADERSIZE 13
 
 int packetize(unsigned char*, std::string, std::string, int, unsigned char*);
 void cbc_mac_var_length(int);
+
+void printBytes(unsigned char* buf, int len){
+  for(int i = 0; i < len; i++ ) {
+    putc( isprint(buf[i]) ? buf[i] : '.' , stdout );
+  }
+  return;
+}
 
 // get sockaddr, IPv4 or IPv6:
 void *get_in_addr(struct sockaddr *sa)
@@ -99,7 +107,7 @@ int packetize(unsigned char* out_buf, std::string type, std::string enc_dec, int
 	memcpy(out_buf, msg.c_str(), msg.length());
 	memcpy(out_buf+msg.length(), data, len);
 	DEBUG && std::cout << "Here's the final buffer: " << out_buf << std::endl;
-	return 1024;
+	return MAXHEADERSIZE - 4 + length.size()+len;
 }
 
 void cbc_mac_var_length(int sockfd) {
@@ -108,50 +116,57 @@ void cbc_mac_var_length(int sockfd) {
 	int out_len;
 	int numbytes = 16;
 	unsigned char tag1[17], tag2[17];
-	unsigned char m1[17] = "abcdefghijklmnop";
-	unsigned char m2[17] = "1234567890123456";
+	std::string m1 = "a;lsdjkfg;lkjnop";
+	std::string m2 = "1998123123lg3456"; 
 	
-	memcpy(in_buf, m1, 16);
-	out_len = packetize(out_buf, "TAG", "ENC", 16, (unsigned char *)in_buf);
+	out_len = packetize(out_buf, "TAG", "ENC", m1.size(), (unsigned char *) m1.c_str());
+        sleep(1);
 	send(sockfd, out_buf, out_len, 0);
 	if ((numbytes = recv(sockfd, out_buf, MAXDATASIZE+MAXHEADERSIZE, 0)) == -1) {
 		perror("recv");
 		exit(1);
 	}
 	memcpy(tag1, out_buf, 16);
-	tag1[16] = '\0';
-	std::cout << "Tag of '" << m1 << "' is '" << "'" << std::endl;
+	tag1[17] = '\0';
+	std::cout << "Tag1 of '" << m1 << "' is '" << tag1 << "' or '";
+	printBytes(tag1, 16);
+	std::cout <<"'" <<std::endl;
 	
-	memcpy(in_buf, m2, 16);
-	out_len = packetize(out_buf, "TAG", "ENC", 16, (unsigned char *) in_buf);
+	//memcpy(in_buf, m2, 16);
+	out_len = packetize(out_buf, "TAG", "ENC", m2.size(), (unsigned char *) m2.c_str());
+        sleep(1);
 	send(sockfd, out_buf, out_len, 0);
 	if ((numbytes = recv(sockfd, out_buf, MAXDATASIZE+MAXHEADERSIZE, 0)) == -1) {
 		perror("recv");
 		exit(1);
 	}
 	memcpy(tag2, out_buf, 16);
-	tag2[16] = '\0';
-	std::cout << "Tag of '" << m2 << "' is '" << tag2 << "'" << std::endl;
+	tag2[17] = '\0';
+	std::cout << "Tag2 of '" << m2 << "' is '" << tag2 << "' or '";
+	printBytes(tag2, 16);
+	std::cout <<"'" <<std::endl;
 	
 	
 	
-	// tag2||m1||m2^tag1 should verify
-	unsigned char mnew[33];
-	memcpy(mnew, m1, 16);
+	// tag2||m1||0x16,...,0x16||m2^tag1 will verify for m1 is multiple of 16
+	unsigned char mnew[3*BLOCKSIZE];
 	for (int i = 0; i < 16; i++) {
-		mnew[i + 16] = m2[i] ^ tag1[i];
+		mnew[i] = m1.at(i);
+		mnew[i + 16] = (unsigned char) 0x10;
+		mnew[i + 16*2] = m2[i] ^ tag1[i];
 	}
-	mnew[32] = '\0';
+
 	memcpy(in_buf, tag2, 16);
-	memcpy(in_buf + 16, mnew, 32);
-	out_len = packetize(out_buf, "TAG", "DEC", 48, (unsigned char *) in_buf);
+	memcpy(in_buf + 16, mnew, 3*BLOCKSIZE);
+	out_len = packetize(out_buf, "TAG", "DEC", 4*BLOCKSIZE, (unsigned char *) in_buf); 
+
+        sleep(1);
 	send(sockfd, out_buf, out_len, 0);
-	std::cout << "Out_buf: " << out_buf << std::endl;
 	if ((numbytes = recv(sockfd, out_buf, MAXDATASIZE+MAXHEADERSIZE, 0)) == -1) {
 		perror("recv");
 		exit(1);
 	}
-	std::cout << "bytes: " << numbytes << std::endl;
-	std::cout << "Out_buf: " << out_buf << std::endl;
-	std::cout << "Verification of message '" << mnew << "' with tag '" << tag2 << "': " << out_buf << std::endl;
+	out_buf[numbytes+1] = '\0';
+	std::cout << "Verification of message '" <<(int*) mnew << "' with tag '" << tag2 << "': " << std::endl;
+	std::cout << out_buf << std::endl;
 }

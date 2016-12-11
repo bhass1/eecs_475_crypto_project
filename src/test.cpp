@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <openssl/evp.h>
 #include <openssl/aes.h>
+#include <string>
 
 #ifndef TRUE
 #define TRUE 1
@@ -31,7 +32,7 @@ void printBytes(unsigned char* buf, int len){
 /**
  * Encrypt or decrypt, depending on flag 'should_encrypt'
  */
-void en_de_crypt(int should_encrypt, FILE *ifp, FILE *ofp, unsigned char *ckey, unsigned char *ivec) {
+void en_de_crypt(int should_encrypt, FILE *ifp, FILE *ofp, unsigned char *ckey, unsigned char *ivec, std::string mode) {
 
   //Arbitrary BUFSIZE for chunking the target file.
   const unsigned BUFSIZE=4096;
@@ -43,8 +44,12 @@ void en_de_crypt(int should_encrypt, FILE *ifp, FILE *ofp, unsigned char *ckey, 
   //Get a new cipher envelope context
   EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
 
-  //Initialize the cipher envelope as 256-bit CBC with ckey, iv, enc/dec mode
-  EVP_CipherInit(ctx, EVP_aes_256_cbc(), ckey, ivec, should_encrypt);
+  //Initialize the cipher envelope as 128-bit CBC with ckey, iv, enc/dec mode
+  if(mode.compare("CTR") == 0) {
+    EVP_CipherInit(ctx, EVP_aes_128_ctr(), ckey, ivec, should_encrypt);
+  } else {
+    EVP_CipherInit(ctx, EVP_aes_128_cbc(), ckey, ivec, should_encrypt);
+  }
   blocksize = EVP_CIPHER_CTX_block_size(ctx);
   cipher_buf = (unsigned char *) malloc(BUFSIZE + blocksize);
 
@@ -87,7 +92,7 @@ int main(int argc, char *argv[])
   fOUT = fopen("ciphertext.txt", "wb"); //File to be written; cipher text
 
   std::cout << "Encrypting contents of plain.txt:" << std::endl;	
-  en_de_crypt(TRUE, fIN, fOUT, ckey, ivec);
+  en_de_crypt(TRUE, fIN, fOUT, ckey, ivec, "CBC");
 
   fclose(fIN);
   fclose(fOUT);
@@ -98,10 +103,29 @@ int main(int argc, char *argv[])
   fOUT = fopen("decrypted.txt", "wb"); //File to be written; plain text
 
   std::cout << "Decrypting contents of ciphertext.txt:" << std::endl;	
-  en_de_crypt(FALSE, fIN, fOUT, ckey, ivec);
+  en_de_crypt(FALSE, fIN, fOUT, ckey, ivec, "CBC");
 
   fclose(fIN);
   fclose(fOUT);
+
+
+  // First encrypt the file
+  fIN = fopen("plain_1.txt", "rb"); //File to be encrypted; plain text
+  if(fIN){
+    fOUT = fopen("ctr_cipher_1.txt", "wb"); //File to be written; cipher text
+    en_de_crypt(TRUE, fIN, fOUT, ckey, ivec, "CTR");
+    fclose(fIN);
+    fclose(fOUT);
+  }
+
+  fIN = fopen("plain_2.txt", "rb"); //File to be encrypted; plain text
+  if(fIN){
+    fOUT = fopen("ctr_cipher_2.txt", "wb"); //File to be written; cipher text
+    en_de_crypt(TRUE, fIN, fOUT, ckey, ivec, "CTR");
+    fclose(fIN);
+    fclose(fOUT);
+  }
+
 
   return 0;
 }

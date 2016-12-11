@@ -36,7 +36,7 @@
 #define MAXDATASIZE 1024
 #define MAXHEADERSIZE 13//4+4+5 : "CBC ENC 1024 "
 
-#define DEBUG 1
+#define DEBUG 0
 	
 
 #define BACKLOG 10     // how many pending connections queue will hold
@@ -262,7 +262,7 @@ int handle_msg(int sock, unsigned char* buf){
     			    	char * msg = (char*)"ERROR, INVALID TAG";
     				memcpy(out_buf, msg, strlen(msg)+1);
     			}
-			if (send(sock, out_buf, strlen((const char*)out_buf), 0) == -1){ 
+			if (send(sock, out_buf, strlen((const char*)out_buf)+1, 0) == -1){ 
 				perror("send");
 				return 0;
 			}
@@ -303,13 +303,13 @@ void enc_and_tag(int should_encrypt, unsigned char *in_buf, int size_in, unsigne
     //	*return_len = err_len;
     //    return;
     //}
-    std::cout << "plain len: "<< cipher_len << std::endl;
-    std::cout << "plain : "<< ciphertext << std::endl;
-    std::cout << "in_tag : "<< in_tag << std::endl;
+    DEBUG && std::cout << "plain len: "<< cipher_len << std::endl;
+    DEBUG && std::cout << "plain : "<< ciphertext << std::endl;
+    DEBUG && std::cout << "in_tag : "<< in_tag << std::endl;
   } else {
     status_flag = enc_128_aes_cbc(should_encrypt, in_buf, size_in, ciphertext, &cipher_len, ckey, ivec);
-    std::cout << "cipher len: "<< cipher_len << std::endl;
-    std::cout << "cipher : "<< ciphertext << std::endl;
+    DEBUG && std::cout << "cipher len: "<< cipher_len << std::endl;
+    DEBUG && std::cout << "cipher : "<< ciphertext << std::endl;
   }
 
   //At this point ciphertext has cipher bytes if should_encrypt, else has plaintext bytes
@@ -325,7 +325,7 @@ void enc_and_tag(int should_encrypt, unsigned char *in_buf, int size_in, unsigne
     } else {
         char * err = (char*)"ERROR, INVALID TAG";
 	int err_len = strlen(err);
-    	memcpy(out_buf, err, err_len);
+    	memcpy(out_buf, err, err_len+1);
     	std::cout << "out_buf : "<< out_buf << std::endl;
     	*return_len = err_len;
     }
@@ -482,11 +482,11 @@ int enc_128_aes_cbc(int should_encrypt, unsigned  char *in_buf, int size_in, uns
 }
 
 int verify_tag_128(unsigned char * tag1, unsigned char * tag2){
-  DEBUG && std::cout << "VERIFY:: ";
-  DEBUG && printBytes(tag1, 16);
-  DEBUG && std::cout << " =? ";
-  DEBUG && printBytes(tag2, 16);
-  DEBUG && std::cout << std::endl;
+  std::cout << "VERIFY:: ";
+  printBytes(tag1, 16);
+  std::cout << " =? ";
+  printBytes(tag2, 16);
+  std::cout << std::endl;
   for(int i = 0; i < 16; i++){
     DEBUG && std::cout << "VERIFY "<<i<<":: " << (int)tag1[i] << " =? "<<(int)tag2[i]<<std::endl;
     if((int)tag1[i] != (int)tag2[i]) {

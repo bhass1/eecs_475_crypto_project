@@ -154,24 +154,31 @@ void padding_oracle_attack(int should_encrypt, std::string filename, FILE *ofp, 
   }
 
   int b = 16 - padding_start;
-  std::deque<unsigned char> plaintext(cipher.size() - b);
-  std::vector<unsigned char> tempCipher = cipher;
-  while(padding_start > 0){
+
+  std::vector<unsigned char> plaintext(cipher.size() - b);
+  for(unsigned k = 16; k > 0; k--){
+    std::vector<unsigned char> tempCipher = cipher;
     std::cout << "Padding starts at " << padding_start << std::endl;
     std::vector<unsigned char> v1(16), v2(16);
+
     for(unsigned i = 0; i < padding_start; ++i){
       v1.at(i) = (unsigned char)0x00;
     }
     for(unsigned i = padding_start; i < 16; ++i){
       v1.at(i) = (unsigned char)b;
     }
+
     int index = padding_start - 1;
     for(unsigned i = 0; i < index; ++i){
       v2.at(i) = (unsigned char)(0x00);
     }
+
     for(unsigned i = padding_start; i < 16; ++i){
       v2.at(i) = (unsigned char)(b+1);
-    }
+    }      
+
+    printBytes(v1.data(), v1.size());
+    printBytes(v2.data(), v2.size());
     for(unsigned i = 0; i < 256; ++i){
       std::vector<unsigned char> v3(16);
       v2.at(index) = (unsigned char)(i);
@@ -186,14 +193,10 @@ void padding_oracle_attack(int should_encrypt, std::string filename, FILE *ofp, 
       // printBytes(cipher.data(), 32);
       unsigned char B;
       if(padding_oracle(cipher, ckey, ivec)){
-        std::cout << "i: " << i << std::endl;
-        std::cout << "HOORAY" << std::endl;
-        std::cout << "b: " << b << std::endl;
         B = (unsigned char)(b+1)^(unsigned char)i;
-
-        printf("%x", B & 0xff);
+        std::cout << "B: " << B;
         std::cout << std::endl;
-        plaintext.push_front(B);
+        plaintext.insert(plaintext.begin(),B);
         padding_start--;
         b++;
         break;
@@ -201,6 +204,11 @@ void padding_oracle_attack(int should_encrypt, std::string filename, FILE *ofp, 
       else{
         cipher = tempCipher;
       }
+    }
+    if(padding_start == 0){
+      std::cout << "Plaintext: ";
+      printBytes(plaintext.data(), plaintext.size());
+      break;
     }
   }
 }

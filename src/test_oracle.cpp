@@ -121,7 +121,7 @@ void padding_oracle_attack(int should_encrypt, std::string filename, FILE *ofp){
 
   std::cout << "CipherSize: " << cipher.size() << std::endl;
 
-  //Scan through cipher to find padding
+  //Find padding
   int pad_start = find_padding(ivec, cipher);
   int b = BLOCKSIZE-(pad_start % BLOCKSIZE);// - pad_start;
 
@@ -161,15 +161,29 @@ void padding_oracle_attack(int should_encrypt, std::string filename, FILE *ofp){
 // Returns the index where the padding starts in the ciphertext
 int find_padding(unsigned char * ivec, std::vector<unsigned char> cipher){
   unsigned char temp;
-  for(int i = cipher.size()-(2*BLOCKSIZE); i < cipher.size()-BLOCKSIZE; i++){
-    temp = cipher.at(i);
-    cipher.at(i)++; //Change cipher block at i
-    //Now use padding oracle with modified cipher_block
-    if(padding_oracle(ivec, cipher) == 0){
-        //Padding error detected
-        return  i; //0, 1, 2, etc.
+  if(cipher.size() <= BLOCKSIZE){ //Handle finding padding on single block cipher
+    for(int i = 0; i < BLOCKSIZE; i++){
+      temp = ivec[i];
+      ivec[i]++; //Change IV block at i
+      //Now use padding oracle with modified cipher_block
+      if(padding_oracle(ivec, cipher) == 0){
+          //Padding error detected
+          ivec[i] = temp;
+          return  i; //0, 1, 2, etc.
+      }
+      ivec[i] = temp;
     }
-    cipher.at(i) = temp;
+  } else {
+    for(int i = cipher.size()-(2*BLOCKSIZE); i < cipher.size()-BLOCKSIZE; i++){
+      temp = cipher.at(i);
+      cipher.at(i)++; //Change cipher block at i
+      //Now use padding oracle with modified cipher_block
+      if(padding_oracle(ivec, cipher) == 0){
+          //Padding error detected
+          return  i; //0, 1, 2, etc.
+      }
+      cipher.at(i) = temp;
+    }
   }
 }
 
@@ -180,7 +194,12 @@ std::vector<unsigned char> blockCracker(std::vector<unsigned char> iveccipher, i
   std::vector<unsigned char> plaintext;
 
   if(iveccipher.size() <= BLOCKSIZE){
-    return iveccipher; //nothing to crack, ivec is sent over wire so we know it
+    //nothing to crack, ivec is sent over wire so we know it
+    return iveccipher; 
+  }
+  if(b == 0x10){
+    //nothing to crack, full padding block, return empty plaintext
+    return plaintext;
   }
 
   for(unsigned k = 16; k > 0; k--){

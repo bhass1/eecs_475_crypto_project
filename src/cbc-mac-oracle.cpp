@@ -120,7 +120,7 @@ void cbc_mac_var_length(int sockfd) {
 	}
 	memcpy(tag1, out_buf, 16);
 	tag1[16] = '\0';
-	std::cout << "Tag of '" << m1 << "' is '" << tag1 << "'" << std::endl;
+	std::cout << "Tag of '" << m1 << "' is '" << "'" << std::endl;
 	
 	memcpy(in_buf, m2, 16);
 	out_len = packetize(out_buf, "TAG", "ENC", 16, (unsigned char *) in_buf);
@@ -138,17 +138,20 @@ void cbc_mac_var_length(int sockfd) {
 	// tag2||m1||m2^tag1 should verify
 	unsigned char mnew[33];
 	memcpy(mnew, m1, 16);
-	for (int i = 16; i < 32; i++) {
-		mnew[i] = m2[i - 16] ^ tag1[i - 16];
+	for (int i = 0; i < 16; i++) {
+		mnew[i + 16] = m2[i] ^ tag1[i];
 	}
 	mnew[32] = '\0';
 	memcpy(in_buf, tag2, 16);
 	memcpy(in_buf + 16, mnew, 32);
 	out_len = packetize(out_buf, "TAG", "DEC", 48, (unsigned char *) in_buf);
 	send(sockfd, out_buf, out_len, 0);
+	std::cout << "Out_buf: " << out_buf << std::endl;
 	if ((numbytes = recv(sockfd, out_buf, MAXDATASIZE+MAXHEADERSIZE, 0)) == -1) {
 		perror("recv");
 		exit(1);
 	}
+	std::cout << "bytes: " << numbytes << std::endl;
+	std::cout << "Out_buf: " << out_buf << std::endl;
 	std::cout << "Verification of message '" << mnew << "' with tag '" << tag2 << "': " << out_buf << std::endl;
 }

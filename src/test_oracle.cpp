@@ -28,7 +28,7 @@
 #define FALSE 0
 #endif
 
-#define DEBUG 0
+#define DEBUG 1
 
 #define BLOCKSIZE 16
 #define BUFSIZE 4096 
@@ -123,7 +123,7 @@ void padding_oracle_attack(int should_encrypt, std::string filename, FILE *ofp){
 
   //Scan through cipher to find padding
   int pad_start = find_padding(ivec, cipher);
-  int b = BLOCKSIZE - pad_start;
+  int b = BLOCKSIZE-(pad_start % BLOCKSIZE);// - pad_start;
 
   int cipherBlocks = (cipher.size() / BLOCKSIZE);
   std::vector<unsigned char> iveccipher((cipherBlocks+1)*BLOCKSIZE);

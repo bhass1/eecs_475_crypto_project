@@ -22,7 +22,7 @@
 
 #define DEBUG 0
 
-#define PORT "3499" // the port client will be connecting to
+#define PORT "3490" // the port client will be connecting to
 
 #define MAXDATASIZE 1024 // max number of data bytes we will send
 #define MAXHEADERSIZE 13

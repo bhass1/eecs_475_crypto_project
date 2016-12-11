@@ -18,6 +18,7 @@
 #include <iterator>
 #include <string>
 #include <deque>
+#include <algorithm>
 
 #ifndef TRUE
 #define TRUE 1
@@ -26,6 +27,8 @@
 #ifndef FALSE
 #define FALSE 0
 #endif
+
+#define DEBUG 0
 
 #define BLOCKSIZE 16
 #define BUFSIZE 4096 
@@ -38,11 +41,11 @@ std::vector<unsigned char> blockCracker(std::vector<unsigned char> iveccipher, i
 unsigned char ckey[] = "1122334455667788";
 unsigned char ivec[] = "llmmnnooppqqrrss";
 
-void printBytes(unsigned char* buf, int len){
+int printBytes(unsigned char* buf, int len){
   for(int i = 0; i < len; i++ ) {
     putc( isprint(buf[i]) ? buf[i] : '.' , stdout );
   }
-  return;
+  return 0;
 }
 
 /**
@@ -71,7 +74,7 @@ void en_de_crypt(int should_encrypt, FILE *ifp, FILE *ofp, unsigned char *ckey, 
   while (1) {
     //Read in data in BUFSIZE chunk
     int numRead = fread(read_buf, sizeof(unsigned char), BUFSIZE, ifp);
-    std::cout << "numRead: " << numRead << std::endl;
+    DEBUG && std::cout << "numRead: " << numRead << std::endl;
     //Update cipher (Uses CBC mode EVP API)
     EVP_CipherUpdate(ctx, cipher_buf, &out_len, read_buf, numRead);
     //Write cipher buffer to file and print to console
@@ -117,63 +120,42 @@ void padding_oracle_attack(int should_encrypt, std::string filename, FILE *ofp){
   std::copy(istream_iterator(file), istream_iterator(), std::back_inserter(cipher));
 
   std::cout << "CipherSize: " << cipher.size() << std::endl;
-  
 
-  //Scan through cipher to see if changing a byte causes padding error
+  //Scan through cipher to find padding
   int pad_start = find_padding(ivec, cipher);
   int b = BLOCKSIZE - pad_start;
 
-/*  //our first guess is size of block minus pad
-  std::vector<unsigned char> plaintext(BLOCKSIZE - b); 
-
-  for(unsigned k = 16; k > 0; k--){
-    std::vector<unsigned char> tempCipher = cipher;
-    std::cout << "k= "<<k<<" Padding starts at " << pad_start << " b = "<< b << std::endl;
-    std::vector<unsigned char> v1(BLOCKSIZE), v3(BLOCKSIZE);
-
-    v1 = makeV1(b);
-
-    std::cout << "v1: ";
-    printBytes(v1.data(), v1.size());
-    std::cout << std::endl;
-
-    //Begin looping to find value of i (which tells us plaintext byte at index)
-    for(unsigned i = 0; i < 256; ++i){
-      v3 = makeV3(b, v1, i);
-
-      for(unsigned j = 0; j < BLOCKSIZE; ++j){
-        cipher.at(j) = v3.at(j)^cipher.at(j);
-      }
-
-      unsigned char B;
-      if(padding_oracle(ivec, cipher)){
-        B = (unsigned char)(b+1)^(unsigned char)i;
-        std::cout << "B: " << B;
-        std::cout << std::endl;
-        plaintext.insert(plaintext.begin(),B);
-        pad_start--;
-        b++;
-        break;
-      }
-      else{
-        cipher = tempCipher;
-      }
-    }
-    if(pad_start == 0){
-      std::cout << "Plaintext: ";
-      printBytes(plaintext.data(), plaintext.size());
-      std::cout<<std::endl;
-      break;
-    }
-  }*/
-  std::vector<unsigned char> iveccipher(cipher.size()+BLOCKSIZE);
+  int cipherBlocks = (cipher.size() / BLOCKSIZE);
+  std::vector<unsigned char> iveccipher((cipherBlocks+1)*BLOCKSIZE);
   for(int i = 0; i < BLOCKSIZE; i++){
     iveccipher.at(i) = ivec[i];
   }
   for(int i = 0; i < cipher.size(); i++){
     iveccipher.at(i+BLOCKSIZE) = cipher.at(i);
   }
-  blockCracker(iveccipher, b);
+
+  std::vector<unsigned char> plaintext, guess;
+  for(int z = cipherBlocks; z > 0; z--){
+    plaintext = blockCracker(iveccipher, b);
+
+    //add plaintext to our guess
+    for(int i = 0; i < plaintext.size(); i++){
+      //Put in backwards so we can just swap at the end
+      unsigned char c = *plaintext.end();
+      guess.push_back((plaintext.at(plaintext.size()-1-i)));  
+    }
+
+    //Now strip off the last cipher set padding to 0 and repeat
+    iveccipher.erase(iveccipher.end()-BLOCKSIZE, iveccipher.end());
+    b = 0;
+  }
+  std::reverse(guess.begin(), guess.end());
+  std::cout << "Plaintext Guess:";
+  std::cout << std::endl;
+  std::cout << std::endl;
+  printBytes(guess.data(), guess.size());
+  std::cout << std::endl;
+  std::cout << std::endl;
 }
 
 // Returns the index where the padding starts in the ciphertext
@@ -195,7 +177,7 @@ int find_padding(unsigned char * ivec, std::vector<unsigned char> cipher){
 std::vector<unsigned char> blockCracker(std::vector<unsigned char> iveccipher, int b){
   int pad_start = -1*(b - BLOCKSIZE);
   //our guess is size of block minus pad
-  std::vector<unsigned char> plaintext(BLOCKSIZE - b); 
+  std::vector<unsigned char> plaintext;
 
   if(iveccipher.size() <= BLOCKSIZE){
     return iveccipher; //nothing to crack, ivec is sent over wire so we know it
@@ -203,14 +185,14 @@ std::vector<unsigned char> blockCracker(std::vector<unsigned char> iveccipher, i
 
   for(unsigned k = 16; k > 0; k--){
     std::vector<unsigned char> tempCipher = iveccipher;
-    std::cout << "k= "<<k<<" Padding starts at " << pad_start << " b = "<< b << std::endl;
+    DEBUG && std::cout << "k= "<<k<<" Padding starts at " << pad_start << " b = "<< b << std::endl;
     std::vector<unsigned char> v1(BLOCKSIZE), v3(BLOCKSIZE);
 
     v1 = makeV1(b);
 
-    std::cout << "v1: ";
-    printBytes(v1.data(), v1.size());
-    std::cout << std::endl;
+    DEBUG && std::cout << "v1: ";
+    DEBUG && printBytes(v1.data(), v1.size());
+    DEBUG && std::cout << std::endl;
 
     //Begin looping to find value of i (which tells us plaintext byte at index)
     for(unsigned i = 0; i < 256; ++i){
@@ -230,7 +212,7 @@ std::vector<unsigned char> blockCracker(std::vector<unsigned char> iveccipher, i
 
       if(padding_oracle(ivec, cipher)){
         unsigned char B = (unsigned char)(b+1)^(unsigned char)i;
-        std::cout << "B: " << B << std::endl;
+        DEBUG && std::cout << "B: " << B << std::endl;
         plaintext.insert(plaintext.begin(),B);
         pad_start--;
         b++;
@@ -241,9 +223,9 @@ std::vector<unsigned char> blockCracker(std::vector<unsigned char> iveccipher, i
       }
     }
     if(pad_start == 0){
-      std::cout << "Plaintext: ";
-      printBytes(plaintext.data(), plaintext.size());
-      std::cout<<std::endl;
+      DEBUG && std::cout << "Plaintext Block: ";
+      DEBUG && printBytes(plaintext.data(), plaintext.size());
+      DEBUG && std::cout<<std::endl;
       break;
     }
   }
@@ -301,7 +283,9 @@ int main(int argc, char *argv[])
   padding_oracle_attack(0, "origcipher.txt", fOUT);
 
   std::cout << "Decrypting contents of ciphertext.txt:" << std::endl;	
+  std::cout << std::endl;
   en_de_crypt(FALSE, fIN, fOUT, ckey, ivec, "CBC");
+  std::cout << std::endl;
 
   fclose(fIN);
   fclose(fOUT);

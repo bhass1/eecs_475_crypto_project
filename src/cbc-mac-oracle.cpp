@@ -115,7 +115,7 @@ void cbc_mac_var_length(int sockfd) {
 	unsigned char in_buf[MAXDATASIZE + MAXHEADERSIZE + 1];
 	int out_len;
 	int numbytes = 16;
-	unsigned char tag1[17], tag2[17];
+	unsigned char tag1[16], tag2[16];
 	std::string m1 = "a;lsdjkfg;lkjnop";
 	std::string m2 = "1998123123lg3456"; 
 	
@@ -127,12 +127,11 @@ void cbc_mac_var_length(int sockfd) {
 		exit(1);
 	}
 	memcpy(tag1, out_buf, 16);
-	tag1[17] = '\0';
+	tag1[16] = '\0';
 	std::cout << "Tag1 of '" << m1 << "' is '" << tag1 << "' or '";
 	printBytes(tag1, 16);
 	std::cout <<"'" <<std::endl;
 	
-	//memcpy(in_buf, m2, 16);
 	out_len = packetize(out_buf, "TAG", "ENC", m2.size(), (unsigned char *) m2.c_str());
         sleep(1);
 	send(sockfd, out_buf, out_len, 0);
@@ -155,7 +154,6 @@ void cbc_mac_var_length(int sockfd) {
 		mnew[i + 16] = (unsigned char) 0x10;
 		mnew[i + 16*2] = m2[i] ^ tag1[i];
 	}
-
 	memcpy(in_buf, tag2, 16);
 	memcpy(in_buf + 16, mnew, 3*BLOCKSIZE);
 	out_len = packetize(out_buf, "TAG", "DEC", 4*BLOCKSIZE, (unsigned char *) in_buf); 

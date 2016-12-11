@@ -415,7 +415,7 @@ void tag_128_aes_cbc(unsigned char *in_buf, int size_in, unsigned char *tag, uns
   //Initialize the cipher envelope as 128-bit ECB with ckey, iv
   unsigned char iv[16];
   memset(iv, '\0', 16);
-  EVP_CipherInit(ctx, EVP_aes_128_cbc(), ckey, iv, 1);
+  EVP_CipherInit_ex(ctx, EVP_aes_128_cbc(), nullptr, ckey, iv, 1);
   unsigned blocksize = EVP_CIPHER_CTX_block_size(ctx);
   unsigned char *cipher_buf = (unsigned char *) malloc(MAXDATASIZE); //just hold onto the tag
   int out_len;
@@ -431,7 +431,7 @@ void tag_128_aes_cbc(unsigned char *in_buf, int size_in, unsigned char *tag, uns
   }
 
   // Now cipher the final block and write it out.
-  EVP_CipherFinal(ctx, cipher_buf, &out_len);
+  EVP_CipherFinal_ex(ctx, cipher_buf, &out_len);
   assert(out_len == blocksize);
   if(out_len < 16){
   	memcpy(tag+idx, cipher_buf, out_len);

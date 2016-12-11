@@ -17,6 +17,7 @@
 #include <fstream>
 #include <iterator>
 #include <string>
+#include <deque>
 
 #ifndef TRUE
 #define TRUE 1
@@ -112,10 +113,10 @@ int padding_oracle(std::vector<unsigned char> cipher, unsigned char *ckey, unsig
     // printf("%x\n", cipher[31]);
     //cipher[30] = 0x02;
     //cipher[31] = 0x01;
-    std::cout << std::endl;
-    printf("%x\n", cipher[15]);
+    //std::cout << std::endl;
+    //printf("%x\n", cipher[15]);
     //cipher[15] = cipher[15]^0x71^0x10;
-    printf("%x\n", cipher[15]);
+    //printf("%x\n", cipher[15]);
     
     //printf("%x\n", cipher[30]);
     //printf("%x\n", cipher[31]);
@@ -140,6 +141,8 @@ void padding_oracle_attack(int should_encrypt, std::string filename, FILE *ofp, 
   unsigned char temp;
 
   //Scan through cipher to see if changing a byte causes padding error
+  std::cout << "CipherSize: " << cipher.size() << std::endl;
+
   for(unsigned i = 0; i < 16; i++){
     temp = cipher[i];
     cipher[i]++;
@@ -154,75 +157,64 @@ void padding_oracle_attack(int should_encrypt, std::string filename, FILE *ofp, 
 
   int b = 16 - padding_start;
 
-  std::cout << "Padding starts at " << padding_start << " b = "<< b << std::endl;
+  std::vector<unsigned char> plaintext(cipher.size() - b);
+  for(unsigned k = 16; k > 0; k--){
+    std::vector<unsigned char> tempCipher = cipher;
+    std::cout << "Padding starts at " << padding_start << " b = "<< b << std::endl;
+    std::vector<unsigned char> v1(16), v2(16), v3(16);
 
-  std::vector<unsigned char> v1(16), v2(16), v3(16);
+    for(unsigned i = 0; i < padding_start; ++i){ //Fill 0's up to padding
+      v1.at(i) = (unsigned char)0x00;
+    }
+    for(unsigned i = padding_start; i < 16; ++i){ //Fill b padding bytes
+      v1.at(i) = (unsigned char)b;
+    }
 
-  for(unsigned i = 0; i < padding_start; ++i){
-    v1.at(i) = (unsigned char)0x00;
-  }
-  for(unsigned i = padding_start; i < 16; ++i){
-    v1.at(i) = (unsigned char)b;
-  }
-  std::cout << "V1: " << v1.data() << std::endl;
-  int index = padding_start - 1;
-  for(unsigned i = 0; i < padding_start - 1; ++i){
-    v2.at(i) = (unsigned char)0x00;
-  }
-  for(unsigned i = padding_start; i < 16; ++i){
-    v2.at(i) = (unsigned char)(b+1);
-  }
-  std::cout << "V2: " << v2.data() << std::endl;
-  for(unsigned i = 0; i < 256; ++i){
-      v2.at(index) = (unsigned char)(i);
-      
-      for(unsigned j = 0; j < 16; j++){
-        v3.at(j) = v1.at(j)^v2.at(j);
+    int index = padding_start - 1; //i index (what we are searching for)
+    for(unsigned i = 0; i < index; ++i){ //Pre-fill with 0's
+      v2.at(i) = (unsigned char)(0x00);
+    }
+    for(unsigned i = padding_start; i < 16; ++i){
+      v2.at(i) = (unsigned char)(b+1); //Post-fill with b+1 padding bytes
+    }      
+
+    std::cout << "v1: ";
+    printBytes(v1.data(), v1.size());
+    std::cout << std::endl << "v2: ";
+    printBytes(v2.data(), v2.size());
+    std::cout << std::endl;
+
+    //Begin looping to find value of i (which tells us plaintext byte at index)
+    for(unsigned i = 0; i < 256; ++i){
+
+      v2.at(index) = (unsigned char)(i); //Assign i to v2
+      for(unsigned j = 0; j < 16; j++){ 
+        v3.at(j) = v1.at(j)^v2.at(j);//Compute Delta = v3
       }
-      for(unsigned i = 0; i < 16; ++i){
-        v3.at(i) = v3.at(i)^cipher.at(i);
+      for(unsigned j = 0; j < 16; ++j){
+        cipher.at(j) = v3.at(j)^cipher.at(j);
       }
-      std::cout << "V3: " << v3.data() << std::endl;
-      if(padding_oracle(v3, ckey, ivec)){ //Inverse search from padding detection
-        std::cout << "i: " << i << std::endl;
-        std::cout << "HOORAY" << std::endl;
-        std::cout << "b: " << b << std::endl;
+      unsigned char B;
+      if(padding_oracle(cipher, ckey, ivec)){
+        B = (unsigned char)(b+1)^(unsigned char)i;
+        std::cout << "B: " << B;
+        std::cout << std::endl;
+        plaintext.insert(plaintext.begin(),B);
+        padding_start--;
+        b++;
+        break;
       }
+      else{
+        cipher = tempCipher;
+      }
+    }
+    if(padding_start == 0){
+      std::cout << "Plaintext: ";
+      printBytes(plaintext.data(), plaintext.size());
+      std::cout<<std::endl;
+      break;
+    }
   }
-
-
-  // unsigned char *read_buf = (unsigned char*) malloc(BUFSIZE);
-  // unsigned char *cipher_buf;
-  // unsigned blocksize;
-  // int out_len;
-
-  // fOut = fopen("paddingtesttemp.txt" , wb);
-  // int paddingIndex = 0;
-  // for(unsigned i = 0; i < blocksize; ++i){
-  //     //Get a new cipher envelope context
-  //   std::ofstream output("rotatingcipher.txt");
-  //   std::ostream_iterator<std::string> output_iterator(output, "\n");
-  //   std::copy(current.begin(), current.end(), output_iterator);
-  //   fIn = fopen("rotatingcipher.txt");
-  //   //Write cipher buffer to file and print to console
-  //   fwrite(cipher_buf, sizeof(unsigned char), out_len, ofp);
-
-  //   if(EVP_CipherUpdate(ctx, cipher_buf, &out_len, read_buf, numRead) == 0){
-  //     std::cout<< "Padding Found" << std::endl;
-  //     paddingIndex = i;
-  //     break;
-  //   }
-  //   else{
-  //     paddingIndex++;
-  //   }
-  // }
-
-  // cout << "Padding length = " << blocksize - paddingIndex - 1 << std::endl;
-  // for(unsigned i = paddingIndex; i < blocksize){
-  //   for(unsigned j = 0; j < 255; j++){
-
-  //   }
-  // }
 }
 
 int main(int argc, char *argv[])
@@ -253,22 +245,6 @@ int main(int argc, char *argv[])
 
   fclose(fIN);
   fclose(fOUT);
-
-
-  // // First encrypt the file
-  // fIN = fopen("plain_1.txt", "rb"); //File to be encrypted; plain text
-  // fOUT = fopen("ctr_cipher_1.txt", "wb"); //File to be written; cipher text
-  // en_de_crypt(TRUE, fIN, fOUT, ckey, ivec, "CTR");
-  // fclose(fIN);
-  // fclose(fOUT);
-
-  // fIN = fopen("plain_2.txt", "rb"); //File to be encrypted; plain text
-  // fOUT = fopen("ctr_cipher_2.txt", "wb"); //File to be written; cipher text
-  // en_de_crypt(TRUE, fIN, fOUT, ckey, ivec, "CTR");
-  // fclose(fIN);
-  // fclose(fOUT);
-
-
   return 0;
 }
 

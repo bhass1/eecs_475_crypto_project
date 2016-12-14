@@ -1,12 +1,12 @@
 CC = g++
 CFLAGS = -std=c++11 -g
 SRC = lib/libcrypto_old.a src/test.cpp
-SRC1 = lib/libcrypto_old.a src/test_oracle.cpp
-SRC2 = lib/libcrypto_old.a src/cbc-mac-oracle.cpp
+SRC1 = lib/libcrypto_old.a src/oracle.cpp
+SRC2 = lib/libcrypto_old.a src/mac_attack.cpp
 LIBS = -I../openssl/include -Llib -lcrypto -ldl -lpthread
 TARGET = test
 
-all: test oracle mac_attack server client
+all: test oracle mac_attack server side_channel
 
 test: $(SRC)
 	$(CC) $(CFLAGS) $(SRC) $(LIBS) -o test
@@ -20,8 +20,8 @@ mac_attack: $(SRC2)
 server: src/server.cpp	
 	$(CC) $(CFLAGS) src/server.cpp $(LIBS) -o server
 
-client: src/client.cpp
-	$(CC) $(CFLAGS) src/client.cpp $(LIBS) -o client
+side_channel: src/side_channel.cpp
+	$(CC) $(CFLAGS) src/side_channel.cpp $(LIBS) -o side_channel
 
 clean:
 	rm -rf $(TARGET)

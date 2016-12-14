@@ -106,6 +106,7 @@ int padding_oracle(unsigned char* ivec, std::vector<unsigned char> cipher){
     unsigned char *cipher_buf = (unsigned char *) malloc(BUFSIZE + BLOCKSIZE);
     EVP_CipherInit(ctx, EVP_aes_128_cbc(), ckey, ivec, 0);
     err = EVP_CipherUpdate(ctx, cipher_buf, &out_len, cipher.data(), cipher.size());
+    //EVP_CIPHERFINAL_ex() will set err to 0 if decryption fails meaning there is a padding error
     err = EVP_CipherFinal_ex(ctx, cipher_buf, &out_len);
     EVP_CIPHER_CTX_free(ctx);
     return err;
@@ -123,13 +124,18 @@ void padding_oracle_attack(int should_encrypt, std::string filename, FILE *ofp){
 
   //Find padding
   int pad_start = find_padding(ivec, cipher);
+  //Find value that the last block of plaintext is padded with
   int b = BLOCKSIZE-(pad_start % BLOCKSIZE);// - pad_start;
 
+  //Get the number of blocks in the ciphertext
   int cipherBlocks = (cipher.size() / BLOCKSIZE);
   std::vector<unsigned char> iveccipher((cipherBlocks+1)*BLOCKSIZE);
+  //Insert initialization vector into iveccipher
+  //Allows for the first block of the message to be decrypted
   for(int i = 0; i < BLOCKSIZE; i++){
     iveccipher.at(i) = ivec[i];
   }
+  //Read rest of ciphertext into iveccipher
   for(int i = 0; i < cipher.size(); i++){
     iveccipher.at(i+BLOCKSIZE) = cipher.at(i);
   }
@@ -149,6 +155,7 @@ void padding_oracle_attack(int should_encrypt, std::string filename, FILE *ofp){
     iveccipher.erase(iveccipher.end()-BLOCKSIZE, iveccipher.end());
     b = 0;
   }
+  //Reverse our plaintext vector as they were added backwards
   std::reverse(guess.begin(), guess.end());
   std::cout << "Plaintext Guess:";
   std::cout << std::endl;
@@ -203,10 +210,12 @@ std::vector<unsigned char> blockCracker(std::vector<unsigned char> iveccipher, i
   }
 
   for(unsigned k = 16; k > 0; k--){
+    //Save iveccipher in tempCipher to reset iveccipher if padding oracle returns error
     std::vector<unsigned char> tempCipher = iveccipher;
     DEBUG && std::cout << "k= "<<k<<" Padding starts at " << pad_start << " b = "<< b << std::endl;
     std::vector<unsigned char> v1(BLOCKSIZE), v3(BLOCKSIZE);
 
+    //Generate vector that cahnges padding from plaintext block to 0's
     v1 = makeV1(b);
 
     DEBUG && std::cout << "v1: ";
@@ -215,8 +224,9 @@ std::vector<unsigned char> blockCracker(std::vector<unsigned char> iveccipher, i
 
     //Begin looping to find value of i (which tells us plaintext byte at index)
     for(unsigned i = 0; i < 256; ++i){
+      //Generate vector to XOR iveccipher's values with
       v3 = makeV3(b, v1, i);
-
+      //Now iveccipher with v3
       for(unsigned j = iveccipher.size()-2*BLOCKSIZE; j < iveccipher.size() - BLOCKSIZE; ++j){
         iveccipher.at(j) = v3.at(j-iveccipher.size()+2*BLOCKSIZE)^iveccipher.at(j);
       }
@@ -229,15 +239,16 @@ std::vector<unsigned char> blockCracker(std::vector<unsigned char> iveccipher, i
         cipher.at(j) = iveccipher.at(j+BLOCKSIZE);
       }
 
-      if(padding_oracle(ivec, cipher)){
+      if(padding_oracle(ivec, cipher)){ //If true, found plaintext character
+        //Compute B and insert it into plaintext vector
         unsigned char B = (unsigned char)(b+1)^(unsigned char)i;
         DEBUG && std::cout << "B: " << B << std::endl;
         plaintext.insert(plaintext.begin(),B);
-        pad_start--;
-        b++;
+        pad_start--;    //decrement padding start
+        b++;            //increment b
         break;
       }
-      else{
+      else{ //Padding oracle failed. Reset iveccipher to original and try another value of i
         iveccipher = tempCipher;
       }
     }
@@ -248,6 +259,7 @@ std::vector<unsigned char> blockCracker(std::vector<unsigned char> iveccipher, i
       break;
     }
   }
+  //Return decrypted plaintext block
   return plaintext;
 }
 
@@ -257,7 +269,7 @@ std::vector<unsigned char> makeV1(int b){
     for(int i = 0; i < pad_start; ++i){ //Fill 0's up to padding
       v1.at(i) = (unsigned char)0x00;
     }
-    for(int i = pad_start; i < BLOCKSIZE; ++i){ //Fill b padding bytes
+    for(int i = pad_start; i < BLOCKSIZE; ++i){ //Fill b padding bytes with value b
       v1.at(i) = (unsigned char)b;
     }
   return v1;

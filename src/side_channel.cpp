@@ -13,7 +13,7 @@
 
 #include <arpa/inet.h>
 
-#define DEBUG 0
+#define DEBUG 1
 
 #define PORT "3490" // the port client will be connecting to 
 
@@ -23,6 +23,12 @@
 int packetize(unsigned char*, std::string, std::string, int, unsigned char*);
 void tag_timing_attack(unsigned char*, int, int, unsigned char *);
 
+int printBytes(unsigned char* buf, int len){
+  for(int i = 0; i < len; i++ ) {
+    putc( isprint(buf[i]) ? buf[i] : '.' , stdout );
+  }
+  return 1;
+}
 // get sockaddr, IPv4 or IPv6:
 void *get_in_addr(struct sockaddr *sa)
 {
@@ -82,88 +88,25 @@ int main(int argc, char *argv[])
     freeaddrinfo(servinfo); // all done with this structure
 
     unsigned char out_buf[MAXDATASIZE + MAXHEADERSIZE+1];
-
-//////////////////
-    unsigned char* message = (unsigned char *)"TUBULAR TITASTIC GOOD!";
-    int len = packetize(out_buf, "TAG", "ENC", 23, message);
-    send(sockfd, out_buf, len, 0);
-    if ((numbytes = recv(sockfd, buf, MAXDATASIZE+MAXHEADERSIZE, 0)) == -1) {
-        perror("recv");
-        exit(1);
-    }
-    std::cout << "Recv : " << buf << std::endl;
-
-    unsigned char check[39];
-    memcpy(check, buf, 16);
-    memcpy(check+16, message, 23);
-
-    len = packetize(out_buf, "TAG", "DEC", 39, (unsigned char*) check);
-    send(sockfd, out_buf, len, 0);
-    if ((numbytes = recv(sockfd, buf, MAXDATASIZE+MAXHEADERSIZE, 0)) == -1) {
-        perror("recv");
-        exit(1);
-    }
-    std::cout << "Recv : " << buf << std::endl;
-
-    exit(1);
-//////////////////
-
-
-
-    int out_len = packetize(out_buf, "EAT", "ENC", 13, (unsigned char*)"HELLO CRYPTO!");
-    send(sockfd, out_buf, out_len, 0);
-    if ((numbytes = recv(sockfd, buf, MAXDATASIZE+MAXHEADERSIZE, 0)) == -1) {
-        perror("recv");
-        exit(1);
-    }
-    std::cout << "Recv : " << buf << std::endl;
-
-    packetize(out_buf, "EAT", "DEC", numbytes, (unsigned char*)buf);
-    send(sockfd, out_buf, out_len, 0);
-    if ((numbytes = recv(sockfd, buf, MAXDATASIZE+MAXHEADERSIZE, 0)) == -1) {
-        perror("recv");
-        exit(1);
-    }
-    std::cout << "Recv : " << buf << std::endl;
-
     unsigned char forgery[17];
-    unsigned char * cipher = (unsigned char *) "^sc07% *g5yawc,";
-    tag_timing_attack(cipher, sizeof(cipher), sockfd, forgery);
+    unsigned char * cipher = (unsigned char *) "Pay $1,000 to Bill";
+    tag_timing_attack(cipher, strlen((const char*)cipher)+1, sockfd, forgery);
     forgery[16] = '\0';
     std::cout << "FORGERY FOUND : " << forgery << std::endl;
 
-    packetize(out_buf, "TAG", "DEC", 16, forgery);
-    send(sockfd, out_buf, 16, 0);
+    unsigned char full_forge[64]; 
+    memset(full_forge, '\0', 64);
+    memcpy(full_forge, forgery, 16);
+    memcpy(full_forge, cipher, strlen((const char*)cipher)+1);
+
+    int len = packetize(out_buf, "TAG", "DEC", 16+strlen((const char *)cipher)+1, forgery);
+    send(sockfd, out_buf, len, 0);
     if ((numbytes = recv(sockfd, buf, MAXDATASIZE+MAXHEADERSIZE, 0)) == -1) {
         perror("recv");
         exit(1);
     }
-    std::cout << "Recv : " << buf << std::endl;
-
-    exit(1);
-
-
-
-    out_len = packetize(out_buf, "EAT", "ENC", 16, (unsigned char*)"GOOD_BYE CRYPTO!");
-    send(sockfd, out_buf, out_len, 0);
-    if ((numbytes = recv(sockfd, buf, MAXDATASIZE+MAXHEADERSIZE, 0)) == -1) {
-        perror("recv");
-        exit(1);
-    }
-    std::cout << "Recv : " << buf << std::endl;
-
-    packetize(out_buf, "EAT", "DEC", numbytes, (unsigned char*)buf);
-    send(sockfd, out_buf, out_len, 0);
-    if ((numbytes = recv(sockfd, buf, MAXDATASIZE+MAXHEADERSIZE, 0)) == -1) {
-        perror("recv");
-        exit(1);
-    }
-
-    std::cout << "Recv : " << buf << std::endl;
-
-
     buf[numbytes] = '\0';
-    printf("client: received '%s'\n",buf);
+    std::cout << "Recv : " << buf << std::endl;
     close(sockfd);
 
     return 0;
@@ -182,8 +125,10 @@ int packetize(unsigned char* out_buf, std::string type, std::string enc_dec, int
 	return 1024;
 }
 
+
+//Given a message and socket, starts with an initial tag guess and constructs a forged_tag
 void tag_timing_attack(unsigned char* cipher, int cipher_bytes, int sockfd, unsigned char * forged_tag){
-    double thresh_millis = 15.0;
+    double thresh_millis = 20.0;
     double diff = 0.0;
     unsigned char out_buf[MAXDATASIZE + MAXHEADERSIZE+1];
     unsigned char in_buf[MAXDATASIZE + MAXHEADERSIZE+1];
@@ -196,7 +141,7 @@ void tag_timing_attack(unsigned char* cipher, int cipher_bytes, int sockfd, unsi
     while(sweep < 16) {
       for(int i = 0; i < 256; i++){
         in_buf[sweep] = (unsigned char) i;
-        out_len = packetize(out_buf, "EAT", "DEC", cipher_bytes+16, (unsigned char*)in_buf);
+        out_len = packetize(out_buf, "TAG", "DEC", cipher_bytes+16, (unsigned char*)in_buf);
         std::cout << "SENDIGN: "<< out_buf << std::endl;
         send(sockfd, out_buf, out_len, 0);
         gettimeofday(&t1, NULL);
@@ -206,14 +151,33 @@ void tag_timing_attack(unsigned char* cipher, int cipher_bytes, int sockfd, unsi
         }
         gettimeofday(&t2, NULL);
         diff = (double) ((t2.tv_sec*1000 + t2.tv_usec * 0.001) -(t1.tv_sec*1000 + t1.tv_usec * 0.001));
-        std::cout << "time: "<< diff << " ms -- "<<i<<" -- " << out_buf << " --- tried: "<< in_buf << std::endl;
+        std::cout << "time: "<< diff << " ms -- "<<i<<" -- ";
+	printBytes(in_buf, 16);
+	std::cout << std::endl;
         if(diff >= thresh_millis*(sweep+1)){
           std::cout <<"FOUND TAG BYTE: "<<i<<std::endl;
-          forged_tag[sweep] = (unsigned char) i;
-          sweep++;
-	  break;
-        }
-        else if(i == 255){
+          std::cout << "Re-SENDING: ";
+	  printBytes(in_buf, 16);
+	  std::cout << std::endl;
+          out_len = packetize(out_buf, "TAG", "DEC", cipher_bytes+16, (unsigned char*)in_buf);
+          send(sockfd, out_buf, out_len, 0);
+          gettimeofday(&t1, NULL);
+          if ((numbytes= recv(sockfd, out_buf, MAXDATASIZE+MAXHEADERSIZE, 0)) == -1) {
+              perror("recv");
+              exit(1);
+          }
+          gettimeofday(&t2, NULL);
+          diff = (double) ((t2.tv_sec*1000 + t2.tv_usec * 0.001) -(t1.tv_sec*1000 + t1.tv_usec * 0.001));
+          if(diff >= thresh_millis*(sweep+1)){
+            forged_tag[sweep] = (unsigned char) i;
+            sweep++;
+            i = 0;
+	    if(sweep > 15){
+	      return;
+	    }
+	  }
+        } else if(i == 255){
+	  forged_tag[sweep] = (unsigned char) 0x88;
           sweep--;
         }
       }

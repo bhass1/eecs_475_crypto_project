@@ -48,11 +48,11 @@ int verify_tag_128(unsigned char *, unsigned char*);
 int handle_new_connection(int);
 int handle_msg(int, unsigned char* );
 
-int printBytes(unsigned char* buf, int len){
+void printBytes(unsigned char* buf, int len){
   for(int i = 0; i < len; i++ ) {
     putc( isprint(buf[i]) ? buf[i] : '.' , stdout );
   }
-  return 1;
+  return;
 }
 
 void sigchld_handler(int s)
@@ -170,12 +170,34 @@ int handle_new_connection(int sock){
 	int buffer_size = MAXDATASIZE + MAXHEADERSIZE + 1; //+1 for null byte
 	int numbytes = 0;
 	unsigned char buf[buffer_size];
+	std::string search;
 	while(true){
-    		if ((numbytes = recv(sock, buf, buffer_size-1, 0)) <= 0) {
+    		if ((numbytes = recv(sock, buf, 9, 0)) <= 0) {
         		perror("recv");
 			return 0;
     		}
-    		buf[numbytes] = '\0';
+		for(int i = 0; i < 4; i++) {
+			//Scan up to 4 chars because max int is 1024
+			if(buf[9+i] != ' '){ //ENC ENC 1024 <data>
+    				if ((numbytes = recv(sock, buf+9+i+1, 1, 0)) <= 0) {
+        				perror("recv");
+					return 0;
+    				}
+			} else {
+				search = std::string((const char*)buf);
+			}
+		}
+		std::cout << "SEARCH STRING ---" << search << std::endl;
+		std::stringstream ss(search);
+		std::string type, encdec, len;
+		ss >> type >> encdec >> len;
+		int finalBytes = std::stoi(len);
+    		if ((numbytes = recv(sock, buf, finalBytes, 0)) <= 0) {
+        		perror("recv");
+			return 0;
+    		}
+
+
     		printf("server: received '%s'\n", (unsigned char*)buf);
 		if(!handle_msg(sock,buf)){
 			break;
@@ -234,34 +256,34 @@ int handle_msg(int sock, unsigned char* buf){
 		if(encdec.compare("ENC") == 0) {
 			tag_128_aes_cbc(data, data_len, out_buf, (unsigned char *)"123456789");
 			out_buf[17] = '\0';
-    			DEBUG && std::cout << "tag produced: "<< out_buf << std::endl;
+    			std::cout << "tag : "<< out_buf << std::endl;
 			if (send(sock, out_buf, 16, 0) == -1){ 
 				perror("send");
 				return 0;
 			}
 		} else {
-			unsigned char calc_tag[16], tag[16];
+			unsigned char in_tag[17], tag[17];
+			in_tag[17] = '\0';
+			tag[17] = '\0';
 			unsigned char message[data_len-16];
 
-			memcpy(tag, data, 16);
+			memcpy(in_tag, data, 16);
 			memcpy(message, data+16, data_len-16);
-
+    			std::cout << "Received tag : "<< in_tag << std::endl;
+    			std::cout << "Received Msg : "<< message << std::endl;
 			//calculate our own tag on the message
-			tag_128_aes_cbc(message, data_len-16, calc_tag, (unsigned char *)"123456789");
-    			DEBUG && std::cout << "--------------------" << std::endl;
-    			DEBUG && std::cout << "Calculated the tag: ";
-			DEBUG && printBytes(calc_tag,16);
-    			DEBUG && std::cout << "\nReceived tag in msg: ";
-			DEBUG && printBytes(tag,16);
-    			DEBUG && std::cout << "\n--------------------"<< std::endl;
+			tag_128_aes_cbc(message, data_len-16, tag, (unsigned char *)"123456789");
+    			std::cout << "Calculate tag: "<< tag << std::endl;
+
 			//Verify the tags match
-    			if(verify_tag_128(calc_tag, tag)){
+    			if(verify_tag_128(in_tag, tag)){
 				char* msg = (char*)"Tags match! Great success!";
     				memcpy(out_buf, msg, strlen(msg)+1);
     			} else {
     			    	char * msg = (char*)"ERROR, INVALID TAG";
     				memcpy(out_buf, msg, strlen(msg)+1);
     			}
+    			std::cout << "out_buf : "<< out_buf << std::endl;
 			if (send(sock, out_buf, strlen((const char*)out_buf), 0) == -1){ 
 				perror("send");
 				return 0;
@@ -303,13 +325,13 @@ void enc_and_tag(int should_encrypt, unsigned char *in_buf, int size_in, unsigne
     //	*return_len = err_len;
     //    return;
     //}
-    DEBUG && std::cout << "plain len: "<< cipher_len << std::endl;
-    DEBUG && std::cout << "plain : "<< ciphertext << std::endl;
-    DEBUG && std::cout << "in_tag : "<< in_tag << std::endl;
+    std::cout << "plain len: "<< cipher_len << std::endl;
+    std::cout << "plain : "<< ciphertext << std::endl;
+    std::cout << "in_tag : "<< in_tag << std::endl;
   } else {
     status_flag = enc_128_aes_cbc(should_encrypt, in_buf, size_in, ciphertext, &cipher_len, ckey, ivec);
-    DEBUG && std::cout << "cipher len: "<< cipher_len << std::endl;
-    DEBUG && std::cout << "cipher : "<< ciphertext << std::endl;
+    std::cout << "cipher len: "<< cipher_len << std::endl;
+    std::cout << "cipher : "<< ciphertext << std::endl;
   }
 
   //At this point ciphertext has cipher bytes if should_encrypt, else has plaintext bytes
@@ -325,7 +347,7 @@ void enc_and_tag(int should_encrypt, unsigned char *in_buf, int size_in, unsigne
     } else {
         char * err = (char*)"ERROR, INVALID TAG";
 	int err_len = strlen(err);
-    	memcpy(out_buf, err, err_len+1);
+    	memcpy(out_buf, err, err_len);
     	std::cout << "out_buf : "<< out_buf << std::endl;
     	*return_len = err_len;
     }
@@ -415,9 +437,9 @@ void tag_128_aes_cbc(unsigned char *in_buf, int size_in, unsigned char *tag, uns
   //Initialize the cipher envelope as 128-bit ECB with ckey, iv
   unsigned char iv[16];
   memset(iv, '\0', 16);
-  EVP_CipherInit_ex(ctx, EVP_aes_128_cbc(), nullptr, ckey, iv, 1);
+  EVP_CipherInit(ctx, EVP_aes_128_cbc(), ckey, iv, 1);
   unsigned blocksize = EVP_CIPHER_CTX_block_size(ctx);
-  unsigned char *cipher_buf = (unsigned char *) malloc(MAXDATASIZE); //just hold onto the tag
+  unsigned char *cipher_buf = (unsigned char *) malloc(8*blocksize); //just hold onto the tag
   int out_len;
   int idx = 0;
   //Update cipher (Uses EVP API)
@@ -431,13 +453,14 @@ void tag_128_aes_cbc(unsigned char *in_buf, int size_in, unsigned char *tag, uns
   }
 
   // Now cipher the final block and write it out.
-  EVP_CipherFinal_ex(ctx, cipher_buf, &out_len);
+  EVP_CipherFinal(ctx, cipher_buf, &out_len);
   assert(out_len == blocksize);
   if(out_len < 16){
   	memcpy(tag+idx, cipher_buf, out_len);
   } else {
   	memcpy(tag, cipher_buf, 16);
   }
+
   // Free memory
   free(cipher_buf);
   EVP_CIPHER_CTX_free(ctx);
@@ -482,21 +505,13 @@ int enc_128_aes_cbc(int should_encrypt, unsigned  char *in_buf, int size_in, uns
 }
 
 int verify_tag_128(unsigned char * tag1, unsigned char * tag2){
-  std::cout << "VERIFY:: ";
-  printBytes(tag1, 16);
-  std::cout << " =? ";
-  printBytes(tag2, 16);
-  std::cout << std::endl;
   for(int i = 0; i < 16; i++){
-    DEBUG && std::cout << "VERIFY "<<i<<":: " << (int)tag1[i] << " =? "<<(int)tag2[i]<<std::endl;
-    if((int)tag1[i] != (int)tag2[i]) {
-      DEBUG && std::cout << "VERIFY:: [FAIL] " << std::endl;;
+    if(tag1[i] != tag2[i]) {
       return 0;
     } else {
-      std::this_thread::sleep_for(std::chrono::milliseconds(20));
+	    std::this_thread::sleep_for(std::chrono::milliseconds(15));
     }
   } 
-  std::cout << "VERIFY:: [SUCCESS] ";
   return 1;
 }
 

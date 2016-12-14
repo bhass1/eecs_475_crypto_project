@@ -24,7 +24,7 @@ side_channel: src/side_channel.cpp
 	$(CC) $(CFLAGS) src/side_channel.cpp $(LIBS) -o side_channel
 	
 ctr_attack: src/CTRModeReusedIVAttack.cpp
-	$(CC) $(CFLAGS) src/CTRModeReusedIVAttack.cpp $(LIBS) -o ctr_attack
+	$(CC) $(CFLAGS) src/CTRModeReusedIVAttack.cpp -o ctr_attack
 
 clean:
 	rm -rf $(TARGET)

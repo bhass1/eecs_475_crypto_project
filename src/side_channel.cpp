@@ -21,7 +21,7 @@
 #define MAXHEADERSIZE 13
 
 int packetize(unsigned char*, std::string, std::string, int, unsigned char*);
-void tag_timing_attack(unsigned char*, int, int, unsigned char *);
+void tag_timing_attack(char*, unsigned char*, int, int, unsigned char *);
 
 int printBytes(unsigned char* buf, int len){
   for(int i = 0; i < len; i++ ) {
@@ -47,8 +47,8 @@ int main(int argc, char *argv[])
     int rv;
     char s[INET6_ADDRSTRLEN];
 
-    if (argc != 2) {
-        fprintf(stderr,"usage: client hostname\n");
+    if (argc != 3) {
+        fprintf(stderr,"usage: client hostname [TAG/EAT]\n");
         exit(1);
     }
 
@@ -90,23 +90,9 @@ int main(int argc, char *argv[])
     unsigned char out_buf[MAXDATASIZE + MAXHEADERSIZE+1];
     unsigned char forgery[17];
     unsigned char * cipher = (unsigned char *) "Pay $1,000 to Bill";
-    tag_timing_attack(cipher, strlen((const char*)cipher)+1, sockfd, forgery);
+    tag_timing_attack(argv[2], cipher, strlen((const char*)cipher)+1, sockfd, forgery);
     forgery[16] = '\0';
     std::cout << "FORGERY FOUND : " << forgery << std::endl;
-
-    unsigned char full_forge[64]; 
-    memset(full_forge, '\0', 64);
-    memcpy(full_forge, forgery, 16);
-    memcpy(full_forge, cipher, strlen((const char*)cipher)+1);
-
-    int len = packetize(out_buf, "TAG", "DEC", 16+strlen((const char *)cipher)+1, forgery);
-    send(sockfd, out_buf, len, 0);
-    if ((numbytes = recv(sockfd, buf, MAXDATASIZE+MAXHEADERSIZE, 0)) == -1) {
-        perror("recv");
-        exit(1);
-    }
-    buf[numbytes] = '\0';
-    std::cout << "Recv : " << buf << std::endl;
     close(sockfd);
 
     return 0;
@@ -127,7 +113,7 @@ int packetize(unsigned char* out_buf, std::string type, std::string enc_dec, int
 
 
 //Given a message and socket, starts with an initial tag guess and constructs a forged_tag
-void tag_timing_attack(unsigned char* cipher, int cipher_bytes, int sockfd, unsigned char * forged_tag){
+void tag_timing_attack(char* arg, unsigned char* cipher, int cipher_bytes, int sockfd, unsigned char * forged_tag){
     double thresh_millis = 20.0;
     double diff = 0.0;
     unsigned char out_buf[MAXDATASIZE + MAXHEADERSIZE+1];
@@ -141,7 +127,7 @@ void tag_timing_attack(unsigned char* cipher, int cipher_bytes, int sockfd, unsi
     while(sweep < 16) {
       for(int i = 0; i < 256; i++){
         in_buf[sweep] = (unsigned char) i;
-        out_len = packetize(out_buf, "TAG", "DEC", cipher_bytes+16, (unsigned char*)in_buf);
+        out_len = packetize(out_buf, arg, "DEC", cipher_bytes+16, (unsigned char*)in_buf);
         std::cout << "SENDIGN: "<< out_buf << std::endl;
         send(sockfd, out_buf, out_len, 0);
         gettimeofday(&t1, NULL);
@@ -159,7 +145,7 @@ void tag_timing_attack(unsigned char* cipher, int cipher_bytes, int sockfd, unsi
           std::cout << "Re-SENDING: ";
 	  printBytes(in_buf, 16);
 	  std::cout << std::endl;
-          out_len = packetize(out_buf, "TAG", "DEC", cipher_bytes+16, (unsigned char*)in_buf);
+          out_len = packetize(out_buf, arg, "DEC", cipher_bytes+16, (unsigned char*)in_buf);
           send(sockfd, out_buf, out_len, 0);
           gettimeofday(&t1, NULL);
           if ((numbytes= recv(sockfd, out_buf, MAXDATASIZE+MAXHEADERSIZE, 0)) == -1) {

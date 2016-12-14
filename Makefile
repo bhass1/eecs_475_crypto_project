@@ -6,7 +6,7 @@ SRC2 = lib/libcrypto_old.a src/mac_attack.cpp
 LIBS = -I../openssl/include -Llib -lcrypto -ldl -lpthread
 TARGET = test
 
-all: test oracle mac_attack server side_channel
+all: test oracle mac_attack server side_channel ctr_attack
 
 test: $(SRC)
 	$(CC) $(CFLAGS) $(SRC) $(LIBS) -o test

@@ -95,7 +95,7 @@ int main(int argc, char *argv[])
 
     unsigned char out_buf[MAXDATASIZE + MAXHEADERSIZE+1];
     unsigned char forgery[17];
-    unsigned char * cipher = (unsigned char *) "Pay $1,000 to Bill";
+    unsigned char * cipher = (unsigned char *) "Pay $1,000,000 to Bill on 1/1/2017";
     tag_timing_attack(argv[2], cipher, strlen((const char*)cipher)+1, sockfd, forgery);
     forgery[16] = '\0';
     std::cout << "FORGERY FOUND : " << forgery << std::endl;

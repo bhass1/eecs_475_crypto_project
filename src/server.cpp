@@ -59,26 +59,25 @@ void sigchld_handler(int s)
 {
     // waitpid() might overwrite errno, so we save and restore it:
     int saved_errno = errno;
-
     while(waitpid(-1, NULL, WNOHANG) > 0);
-
     errno = saved_errno;
 }
 
 
-// get sockaddr, IPv4 or IPv6:
+// wrapper to get sockaddr based on IPv4 or IPv6
 void *get_in_addr(struct sockaddr *sa)
 {
     if (sa->sa_family == AF_INET) {
         return &(((struct sockaddr_in*)sa)->sin_addr);
     }
-
     return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
+//Set up a socket to listen on port PORT. When a client connects,
+// call handle_new_connection to take care of talking with that client
 int main(void)
 {
-    int sockfd, new_fd;  // listen on sock_fd, new connection on new_fd
+    int sockfd, new_fd;  
     struct addrinfo hints, *servinfo, *p;
     struct sockaddr_storage their_addr; // connector's address information
     socklen_t sin_size;
@@ -119,8 +118,7 @@ int main(void)
 
         break;
     }
-
-    freeaddrinfo(servinfo); // all done with this structure
+    freeaddrinfo(servinfo); 
 
     if (p == NULL)  {
         fprintf(stderr, "server: failed to bind\n");
@@ -132,7 +130,8 @@ int main(void)
         exit(1);
     }
 
-    sa.sa_handler = sigchld_handler; // reap all dead processes
+    //REAP ALL DEAD PROCS
+    sa.sa_handler = sigchld_handler; 
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = SA_RESTART;
     if (sigaction(SIGCHLD, &sa, NULL) == -1) {
@@ -141,7 +140,8 @@ int main(void)
     }
     printf("server: waiting for connections...\n");
 
-    while(1) {  // main accept() loop
+    // main accept() loop
+    while(1) {  
         sin_size = sizeof their_addr;
         new_fd = accept(sockfd, (struct sockaddr *)&their_addr, &sin_size);
         if (new_fd == -1) {
@@ -162,10 +162,14 @@ int main(void)
         }
         close(new_fd);  // parent doesn't need this
     }
-
     return 0;
 }
 
+//Handle new connection takes a socket descriptor and loops forever
+//on it to handle each new incoming set of bytes.
+//
+//Handles recv bytes from client and passing the bytes on to handle_msg where
+//they will be parsed and handled.
 int handle_new_connection(int sock){
 	int buffer_size = MAXDATASIZE + MAXHEADERSIZE + 1; //+1 for null byte
 	int numbytes = 0;
@@ -181,15 +185,14 @@ int handle_new_connection(int sock){
 			break;
 		}
 	}
-
-
-	if (send(sock, "Hello, world!", 13, 0) == -1){ 
-		perror("send");
-		return 0;
-	}
 	return 1;
 }
 
+//Handle msg takes a socket descriptor (used for sending responses back
+//to the client) and a buffer containing the packet to parse.
+//
+//The packet in buf is parsed and an action is taken based on the contents
+//of that packet
 int handle_msg(int sock, unsigned char* buf){
 	std::string type, encdec, len, dat;
 	unsigned char data[MAXDATASIZE];
@@ -294,15 +297,6 @@ void enc_and_tag(int should_encrypt, unsigned char *in_buf, int size_in, unsigne
     memcpy(in_tag, in_buf, 16);
     memcpy(in_cipher, in_buf+16, size_in - 16);
     status_flag = enc_128_aes_cbc(should_encrypt, in_cipher, size_in-16, ciphertext, &cipher_len, ckey, ivec);
-    //if(status_flag != 1) {
-    //    unsigned char * err = (unsigned char*)"DECRYPT FAIL";
-    //    int err_len = strlen((const char*) err);
-    //	std::cout << "sizeof err: "<< err_len << std::endl;
-    //	memcpy(out_buf, err, err_len);
-    //	std::cout << "out_buf : "<< out_buf << std::endl;
-    //	*return_len = err_len;
-    //    return;
-    //}
     DEBUG && std::cout << "plain len: "<< cipher_len << std::endl;
     DEBUG && std::cout << "plain : "<< ciphertext << std::endl;
     DEBUG && std::cout << "in_tag : "<< in_tag << std::endl;
@@ -355,26 +349,9 @@ void tag_then_enc(int should_encrypt, unsigned char *in_buf, int size_in, unsign
 
   unsigned char tag[16];
   if(!should_encrypt) {
-   // //decryption mode - split off the tag
-   // memcpy(in_tag, in_buf, 16);
-   // memcpy(in_cipher, in_buf+16, size_in - 16);
-   // status_flag = enc_128_aes_cbc(should_encrypt, in_cipher, size_in-16, ciphertext, &cipher_len, ckey, ivec);
-   // if(status_flag != 1) {
-   //     unsigned char * err = (unsigned char*)"DECRYPT FAIL";
-   // 	memcpy(out_buf, err, sizeof(err));
-   // 	std::cout << "out_buf : "<< out_buf << std::endl;
-   // 	*return_len = sizeof(err);
-   //     return;
-   // }
-   // std::cout << "plain len: "<< cipher_len << std::endl;
-   // std::cout << "plain : "<< ciphertext << std::endl;
-   // std::cout << "in_tag : "<< in_tag << std::endl;
   } else {
     tag_128_aes_cbc(in_buf, size_in, tag, ckey);
     std::cout << "   tag : "<< tag << std::endl;
-    //status_flag = enc_128_aes_cbc(should_encrypt, in_buf, size_in, ciphertext, &cipher_len, ckey, ivec);
-    //std::cout << "cipher len: "<< cipher_len << std::endl;
-    //std::cout << "cipher : "<< ciphertext << std::endl;
   }
 
   memcpy(ciphertext, tag, 16); //Put tag into front of buffer
@@ -382,19 +359,6 @@ void tag_then_enc(int should_encrypt, unsigned char *in_buf, int size_in, unsign
 
   //At this point ciphertext has cipher bytes if should_encrypt, else has plaintext bytes
   if(!should_encrypt) {
-  //  tag_128_aes_cbc(ciphertext, cipher_len, tag, ckey);
-  //  std::cout << "   tag : "<< tag << std::endl;
-
-  //  if(verify_tag_128(in_tag, tag)){
-  //  	memcpy(out_buf, ciphertext, cipher_len);
-  //  	std::cout << "out_buf : "<< out_buf << std::endl;
-  //  	*return_len = cipher_len;
-  //  } else {
-  //      unsigned char * err = (unsigned char*)"ERROR, INVALID TAG";
-  //  	memcpy(out_buf, err, sizeof(err));
-  //  	std::cout << "out_buf : "<< out_buf << std::endl;
-  //  	*return_len = sizeof(err);
-  //  }
   } else {
     status_flag = enc_128_aes_cbc(should_encrypt, ciphertext, size_in+16, out_buf, return_len, ckey, ivec);
     if(status_flag != 1) {
@@ -443,6 +407,8 @@ void tag_128_aes_cbc(unsigned char *in_buf, int size_in, unsigned char *tag, uns
   EVP_CIPHER_CTX_free(ctx);
 }
 
+//Wrapper for libCrypto 128-bit aes cbc implementation
+//should_encrypt if 0 will cause a decryption, otherwise will cause encryption
 int enc_128_aes_cbc(int should_encrypt, unsigned  char *in_buf, int size_in, unsigned char *out_buf, int* size_out, unsigned char *ckey, unsigned char *ivec) {
 
   unsigned char *cipher_buf;
@@ -481,6 +447,10 @@ int enc_128_aes_cbc(int should_encrypt, unsigned  char *in_buf, int size_in, uns
   EVP_CIPHER_CTX_free(ctx);
 }
 
+//The canonical verifier.
+//Verify tag takes two buffers, tag1 and tag2, to be compared.
+//There is a 20ms sleep when the character is detected as matching
+//which allows for a timing attack against this function.
 int verify_tag_128(unsigned char * tag1, unsigned char * tag2){
   std::cout << "VERIFY:: ";
   printBytes(tag1, 16);
@@ -500,6 +470,8 @@ int verify_tag_128(unsigned char * tag1, unsigned char * tag2){
   return 1;
 }
 
+//Wrapper for libCrypto 128-bit aes ctr implementation
+//should_encrypt if 0 will cause a decryption, otherwise will cause encryption
 void enc_128_aes_ctr(int should_encrypt, unsigned  char *in_buf, int size_in, unsigned char *out_buf, int* size_out, unsigned char *ckey, unsigned char *ivec) {
 
   unsigned char *cipher_buf;

@@ -23,13 +23,16 @@
 int packetize(unsigned char*, std::string, std::string, int, unsigned char*);
 void tag_timing_attack(char*, unsigned char*, int, int, unsigned char *);
 
+//Helper function to print bytes that are screen-printable
+//Replaces non-printable bytes with '.'
 int printBytes(unsigned char* buf, int len){
   for(int i = 0; i < len; i++ ) {
     putc( isprint(buf[i]) ? buf[i] : '.' , stdout );
   }
   return 1;
 }
-// get sockaddr, IPv4 or IPv6:
+
+// wrapper to get sockaddr based on IPv4 or IPv6
 void *get_in_addr(struct sockaddr *sa)
 {
     if (sa->sa_family == AF_INET) {
@@ -39,6 +42,9 @@ void *get_in_addr(struct sockaddr *sa)
     return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
+//Sets up a socket connection to the hostname provided
+//in argv[1]. Then it connects to that host using port PORT.
+//Finally, the side channel attack, tag_timing_attack, is performed.
 int main(int argc, char *argv[])
 {
     int sockfd, numbytes;  
@@ -60,7 +66,7 @@ int main(int argc, char *argv[])
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
         return 1;
     }
-// loop through all the results and connect to the first we can
+    // loop through all the results and connect to the first we can
     for(p = servinfo; p != NULL; p = p->ai_next) {
         if ((sockfd = socket(p->ai_family, p->ai_socktype,
                 p->ai_protocol)) == -1) {

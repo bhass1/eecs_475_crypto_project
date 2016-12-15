@@ -264,10 +264,10 @@ int main(int argc, char* argv[]) {
 	//input
 	ifstream finDict("words.txt");
 
-//	if (!finDict.open()) {
-//		cout << "error: dictionary file \'words.txt\' not found" << endl;
-//		return 0;
-//	}
+	if (!finDict.open()) {
+		cout << "error: dictionary file \'words.txt\' not found" << endl;
+		return 0;
+	}
 
 	ifstream fin1(argv[1]);
 	ifstream fin2(argv[2]);

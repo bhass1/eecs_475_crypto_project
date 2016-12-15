@@ -264,7 +264,7 @@ int main(int argc, char* argv[]) {
 	//input
 	ifstream finDict("words.txt");
 
-	if (!finDict.open()) {
+	if (!finDict.is_open()) {
 		cout << "error: dictionary file \'words.txt\' not found" << endl;
 		return 0;
 	}
